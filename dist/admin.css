@@ -12,3 +12,7 @@
 .auth-help{display:block;margin-top:18px;color:#8f908b;line-height:1.5}
 .admin-account{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:11px;color:var(--muted)}
 .admin-account button{border:1px solid var(--border);padding:8px 11px;border-radius:6px}
+
+#adminAuthGate .button{width:100%;justify-content:center;min-height:58px}
+#adminAuthGate .button.secondary{background:transparent;color:#f3f3f0;border:1px solid #8a8a8a}
+#adminAuthGate .button.secondary:hover{border-color:#faa21a;color:#faa21a}

@@ -7,6 +7,7 @@
     { "source": "/styles.css", "destination": "/dist/styles.css" },
     { "source": "/admin.css", "destination": "/dist/admin.css" },
     { "source": "/admin.js", "destination": "/dist/admin.js" },
+    { "source": "/admin-auth.js", "destination": "/dist/admin-auth.js" },
     { "source": "/app.js", "destination": "/dist/app.js" },
     { "source": "/banners.js", "destination": "/dist/banners.js" },
     { "source": "/carousel.js", "destination": "/dist/carousel.js" },

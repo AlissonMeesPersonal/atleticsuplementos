@@ -2,10 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/", "destination": "/dist/index.html" },
+    { "source": "/admin", "destination": "/dist/admin.html" },
     { "source": "/admin.html", "destination": "/dist/admin.html" },
     { "source": "/styles.css", "destination": "/dist/styles.css" },
     { "source": "/admin.css", "destination": "/dist/admin.css" },
+    { "source": "/admin.js", "destination": "/dist/admin.js" },
     { "source": "/app.js", "destination": "/dist/app.js" },
+    { "source": "/banners.js", "destination": "/dist/banners.js" },
     { "source": "/carousel.js", "destination": "/dist/carousel.js" },
     { "source": "/store-config.js", "destination": "/dist/store-config.js" },
     { "source": "/store-data.js", "destination": "/dist/store-data.js" },

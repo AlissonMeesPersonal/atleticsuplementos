@@ -7,7 +7,7 @@
     if(!safe)return'';
     try{
       const url=new URL(safe,location.href);
-      if(url.hostname==='cdn.awsli.com.br')return `/api/product-cutout?url=${encodeURIComponent(url.href)}`;
+      if(url.hostname==='cdn.awsli.com.br')return `/api/product-cutout?url=${encodeURIComponent(url.href)}&v=2`;
       return safe;
     }catch{return safe}
   };

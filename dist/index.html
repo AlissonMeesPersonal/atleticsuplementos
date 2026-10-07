@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#121212">
+  <script>
+    (()=>{try{const raw=localStorage.getItem('atletic.theme');let theme=raw;try{theme=JSON.parse(raw)}catch{}if(theme!=='light')document.documentElement.classList.add('theme-dark')}catch{document.documentElement.classList.add('theme-dark')}})();
+  </script>
   <meta name="description" content="Atletic Suplementos. Encontre seu próximo passo nos treinos.">
   <title>Atletic Suplementos | Seu próximo nível</title>
   <link rel="stylesheet" href="styles.css">

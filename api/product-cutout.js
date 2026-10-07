@@ -79,7 +79,77 @@ export default async function handler(req, res) {
       if (y + 1 < height) pushIfBackground(index + width);
     }
 
+    // Mantém somente o maior objeto conectado: o produto principal.
+    // Isso remove selos, logos e marcas d'água que ficam separados da embalagem.
+    const foregroundVisited = new Uint8Array(width * height);
+    const componentQueue = new Int32Array(width * height);
+    let largest = [];
+
+    const isForeground = index => {
+      const offset = index * channels;
+      return data[offset + 3] > 16;
+    };
+
+    for (let start = 0; start < width * height; start++) {
+      if (foregroundVisited[start] || !isForeground(start)) continue;
+
+      let componentHead = 0;
+      let componentTail = 0;
+      const component = [];
+      foregroundVisited[start] = 1;
+      componentQueue[componentTail++] = start;
+
+      while (componentHead < componentTail) {
+        const index = componentQueue[componentHead++];
+        component.push(index);
+        const x = index % width;
+        const y = Math.floor(index / width);
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            const next = ny * width + nx;
+            if (foregroundVisited[next] || !isForeground(next)) continue;
+            foregroundVisited[next] = 1;
+            componentQueue[componentTail++] = next;
+          }
+        }
+      }
+
+      if (component.length > largest.length) largest = component;
+    }
+
+    const keep = new Uint8Array(width * height);
+    for (const index of largest) keep[index] = 1;
+
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+    for (let index = 0; index < width * height; index++) {
+      const offset = index * channels;
+      if (!keep[index]) {
+        data[offset + 3] = 0;
+        continue;
+      }
+      const x = index % width;
+      const y = Math.floor(index / width);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+
+    if (maxX < minX || maxY < minY) return res.status(422).send('Produto não identificado na imagem.');
+
+    const padding = Math.max(10, Math.round(Math.max(maxX - minX, maxY - minY) * 0.04));
+    const left = Math.max(0, minX - padding);
+    const top = Math.max(0, minY - padding);
+    const right = Math.min(width - 1, maxX + padding);
+    const bottom = Math.min(height - 1, maxY + padding);
+
     const output = await sharp(data, { raw: { width, height, channels } })
+      .extract({ left, top, width: right - left + 1, height: bottom - top + 1 })
       .png({ compressionLevel: 9, adaptiveFiltering: true })
       .toBuffer();
 

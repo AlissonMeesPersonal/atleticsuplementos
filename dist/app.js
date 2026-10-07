@@ -14,10 +14,26 @@
   let activeCoupon=read('atletic.coupon.v2',null);
   let toastTimer;
 
-  const preferred=read('atletic.theme',null);
-  document.body.classList.toggle('dark',preferred==='dark'||(!preferred&&matchMedia('(prefers-color-scheme: dark)').matches));
-  function updateTheme(){const dark=document.body.classList.contains('dark');$('#theme').setAttribute('aria-label',dark?'Ativar modo claro':'Ativar modo escuro');$('#theme').setAttribute('aria-pressed',String(dark))}updateTheme();
-  $('#theme').onclick=()=>{document.body.classList.toggle('dark');save('atletic.theme',document.body.classList.contains('dark')?'dark':'light');updateTheme()};
+  const THEME_KEY='atletic.theme';
+  function readTheme(){
+    try{
+      const raw=localStorage.getItem(THEME_KEY);
+      if(!raw)return 'dark';
+      try{const parsed=JSON.parse(raw);if(parsed==='dark'||parsed==='light')return parsed}catch{}
+      return raw==='light'?'light':'dark';
+    }catch{return 'dark'}
+  }
+  function saveTheme(theme){try{localStorage.setItem(THEME_KEY,theme)}catch{}}
+  function applyTheme(theme){
+    const dark=theme!=='light';
+    document.body.classList.toggle('dark',dark);
+    document.documentElement.classList.toggle('theme-dark',dark);
+    $('#theme').setAttribute('aria-label',dark?'Ativar modo claro':'Ativar modo escuro');
+    $('#theme').setAttribute('aria-pressed',String(dark));
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark?'#121212':'#faf9f6');
+  }
+  applyTheme(readTheme());
+  $('#theme').onclick=()=>{const next=document.body.classList.contains('dark')?'light':'dark';saveTheme(next);applyTheme(next)};
 
   const colors={'Proteínas':'#faa21a','Creatinas':'#e7e5d9','Pré-treinos':'#bfbdc9','Vitaminas':'#c4ce9e','Acessórios':'#a3aaa4'};
   function bottle(p){const size=(p.detail||'').split('·')[0].trim()||'ATLETIC'; const words=p.name.toUpperCase().split(' '); const label=(words.slice(0,2).join('<br>')||'ATLETIC'); return `<div class="bottle" style="--pack:${colors[p.category]||'#d7d1c3'}"><div class="lid"></div><div class="label"><small>ATLETIC</small><strong>${label}</strong><span>ILUSTRAÇÃO</span><b>${escape(size)}</b></div></div>`}
@@ -66,5 +82,5 @@
   $('#checkout').onclick=()=>{$('#checkoutMessage').textContent='Checkout ainda bloqueado. A próxima integração validará preço, frete, cupom, estoque e pagamento no servidor antes de criar o pedido.'};
   $('#year').textContent=new Date().getFullYear();
   renderCategories();renderProducts();renderCart();
-  window.addEventListener('storage',event=>{if(event.key===AtleticStore.KEY){products=AtleticStore.catalog();renderCategories();renderProducts();renderCart()}});
+  window.addEventListener('storage',event=>{if(event.key===AtleticStore.KEY){products=AtleticStore.catalog();renderCategories();renderProducts();renderCart()}if(event.key===THEME_KEY)applyTheme(readTheme())});
 })();

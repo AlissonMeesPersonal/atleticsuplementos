@@ -3,6 +3,43 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = value => (Number(value || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const slugify = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  const skuNormalize = value => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g,' ')
+    .trim();
+
+  function generateInternalSku(name, brand='') {
+    const normalized = skuNormalize(name);
+    const brandNormalized = skuNormalize(brand);
+    const tokens = normalized.split(/\s+/).filter(Boolean);
+    const stop = new Set(['DE','DA','DO','DAS','DOS','E','COM','SEM','SABOR','NUTRITION','SUPLEMENTO','SUPLEMENTOS']);
+    const words = tokens.filter(token => /^[A-Z]+$/.test(token) && !stop.has(token));
+    const productCode = (words[0] || 'PRO').slice(0,3);
+    const measure = tokens.find(token => /^\d+(?:MG|G|KG|ML|L|CAP|CAPS|UN|UNID)$/.test(token)) || '';
+    const brandWords = brandNormalized.split(/\s+/).filter(token => /^[A-Z]+$/.test(token) && !stop.has(token));
+    let brandCode = '';
+    if (brandWords.length >= 2) brandCode = brandWords[0].slice(0,3) + brandWords[1].slice(0,1);
+    else if (brandWords.length === 1) brandCode = brandWords[0].slice(0,4);
+    else if (words.length >= 2) brandCode = words[words.length - 1].slice(0,4);
+    else brandCode = 'ATL';
+
+    const stem = ['ATL', productCode, measure, brandCode].filter(Boolean).join('-');
+    const currentVariantId = editing ? activeVariant(editing)?.id : null;
+    const used = new Set(
+      data.variants
+        .filter(v => v.id !== currentVariantId)
+        .map(v => String(v.sku || '').toUpperCase())
+    );
+
+    for (let index = 1; index <= 999; index++) {
+      const candidate = `${stem}-${String(index).padStart(3,'0')}`;
+      if (!used.has(candidate)) return candidate;
+    }
+    return `${stem}-${Date.now().toString().slice(-6)}`;
+  }
+
   const THEME_KEY = 'atletic.theme';
   function readTheme() {
     try {
@@ -244,7 +281,7 @@
       html += input('name','Nome do produto','text',p.name||'',[],true,true);
       html += input('brandId','Marca','select',p.brandId||data.brands[0]?.id||'',data.brands.map(x=>[x.id,x.name]),false,true);
       html += input('categoryId','Categoria','select',p.categoryId||data.categories[0]?.id||'',data.categories.map(x=>[x.id,x.name]),false,true);
-      html += input('sku','SKU / código interno','text',v.sku||'',[],false,true);
+      html += input('sku','SKU / código interno (automático)','text',v.sku||'',[],false,true);
       html += input('barcode','Código de barras','text',v.barcode||'');
       html += input('flavor','Sabor', 'text',v.flavor||''); html += input('size','Peso / tamanho','text',v.size||'');
       html += input('price','Preço de venda','money',v.price||0,[],false,true); html += input('comparePrice','Preço anterior/promocional','money',v.comparePrice||0);
@@ -277,7 +314,9 @@
       const title = img.title || 'Imagem';
       const source = img.source || img.brand || sourceLabel || title;
       const origin = img.origin || (img.source_type === 'legacy_store' ? 'library' : '');
-      return `<button type="button" class="image-option" data-image="${esc(imageUrl)}" data-source="${esc(sourceUrl)}" data-origin="${esc(origin)}" data-title="${esc(title)}" title="${esc(title)}"><img src="${esc(thumb)}" alt=""><span>${esc(source)}</span></button>`;
+      const brand = img.brand || '';
+      const category = img.category || '';
+      return `<button type="button" class="image-option" data-image="${esc(imageUrl)}" data-source="${esc(sourceUrl)}" data-origin="${esc(origin)}" data-title="${esc(title)}" data-brand="${esc(brand)}" data-category="${esc(category)}" title="${esc(title)}"><img src="${esc(thumb)}" alt=""><span>${esc(source)}</span></button>`;
     }).join('');
   }
 
@@ -394,7 +433,10 @@
       if(page==='products'){
         const product=editing?data.products.find(x=>x.id===editing):{id:AtleticStore.uid('prod'),images:[]};
         const variant=editing?activeVariant(editing):{id:AtleticStore.uid('var'),productId:product.id};
-        const name=String(fd.get('name')||'').trim(); const sku=String(fd.get('sku')||'').trim(); if(!name||!sku) throw new Error('Nome e SKU são obrigatórios.');
+        const name=String(fd.get('name')||'').trim();
+        if(!name) throw new Error('Nome do produto é obrigatório.');
+        const selectedBrandName=brandName(String(fd.get('brandId')||''));
+        const sku=String(fd.get('sku')||'').trim() || generateInternalSku(name, selectedBrandName);
         if(data.variants.some(v=>v.id!==variant.id&&v.sku.toLowerCase()===sku.toLowerCase())) throw new Error('Já existe uma variação com esse SKU.');
         Object.assign(product,{name,brandId:String(fd.get('brandId')),categoryId:String(fd.get('categoryId')),description:String(fd.get('description')||'').trim(),featured:fd.has('featured'),active:fd.has('active')});
         if(selectedImage) product.images=[{url:selectedImage,sourceUrl:selectedImageSource,alt:name}];
@@ -438,12 +480,30 @@
         );
       }
 
+      const skuField=$('#editForm [name=sku]');
+      let generatedSku='';
+      if(skuField && (!editing || !skuField.value.trim() || /^ATL-/i.test(skuField.value.trim()))){
+        generatedSku=generateInternalSku(imageTitle || nameField?.value.trim() || 'Produto', image.dataset.brand || '');
+        skuField.value=generatedSku;
+        skuField.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+
       const baseStatus=image.dataset.origin==='library'
         ? 'Imagem da biblioteca selecionada. Ela será vinculada ao produto ao salvar.'
         : 'Imagem da internet selecionada e adicionada à biblioteca para reutilização futura.';
-      $('#imageSearchStatus').textContent=nameChanged
-        ? `${baseStatus} O nome do produto também foi atualizado para “${imageTitle}”.`
+      const changes=[];
+      if(nameChanged) changes.push(`nome atualizado para “${imageTitle}”`);
+      if(generatedSku) changes.push(`SKU interno criado: ${generatedSku}`);
+      $('#imageSearchStatus').textContent=changes.length
+        ? `${baseStatus} ${changes.join(' · ')}.`
         : baseStatus;
+
+      if(generatedSku){
+        notify(nameChanged
+          ? `Nome atualizado e SKU criado automaticamente: ${generatedSku}`
+          : `SKU interno criado automaticamente: ${generatedSku}`
+        );
+      }
 
       if(image.dataset.origin==='serper')saveImageToLibrary({
         title:imageTitle||nameField?.value.trim()||'Produto',

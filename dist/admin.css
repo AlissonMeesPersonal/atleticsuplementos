@@ -16,3 +16,8 @@
 #adminAuthGate .button{width:100%;justify-content:center;min-height:58px}
 #adminAuthGate .button.secondary{background:transparent;color:#f3f3f0;border:1px solid #8a8a8a}
 #adminAuthGate .button.secondary:hover{border-color:#faa21a;color:#faa21a}
+
+.image-search-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.image-search-actions .button{padding:10px 13px;gap:8px;font-size:11px;white-space:nowrap}
+.image-search-actions #searchLibrary{background:#faa21a;color:#151515}
+@media(max-width:680px){.image-search-head{align-items:stretch;flex-direction:column}.image-search-actions{justify-content:flex-start}.image-search-actions .button{flex:1 1 100%}}

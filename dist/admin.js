@@ -144,18 +144,106 @@
     else if(page==='banners') { const r=data.banners.find(x=>x.id===id)||{}; html=input('type','Tipo','select',r.type||'campaign',[['campaign','Campanha'],['partner','Parceiro']],false,true)+input('position','Ordem','number',r.position||0)+input('partner','Parceiro','text',r.partner||'')+input('eyebrow','Chamada curta','text',r.eyebrow||'')+input('title','Título','textarea',r.title||'',[],true,true)+input('description','Descrição','textarea',r.description||'',[],true)+input('button','Texto do botão','text',r.button||'Saiba mais')+input('href','Link da campanha','text',r.href||'#catalog')+input('whatsapp','WhatsApp (DDI+DDD+número)','tel',r.whatsapp||'')+input('message','Mensagem do WhatsApp','textarea',r.message||'',[],true)+input('image','Imagem desktop HTTPS','url',r.image||'',[],true)+input('mobileImage','Imagem mobile HTTPS','url',r.mobileImage||'',[],true)+input('startsAt','Início','datetime-local',r.startsAt||'')+input('expiresAt','Fim','datetime-local',r.expiresAt||'')+input('active','Ativo','checkbox',r.active??true); }
     $('#editTitle').textContent = page==='stock'?'Movimentar estoque':`${id?'Editar':'Novo'} ${modules[page].toLowerCase()}`;
     $('#fields').innerHTML=html; $('#editor').showModal();
+    if(page==='products'){
+      const nameField=$('#editForm [name=name]');
+      nameField?.addEventListener('change',()=>{if(nameField.value.trim().length>=3)searchLibrary();});
+    }
+  }
+
+  function adminToken() {
+    return localStorage.getItem('atletic.supabase.access_token') || '';
+  }
+
+  function showImageOptions(images, sourceLabel) {
+    $('#imageResults').innerHTML = images.map(img => {
+      const imageUrl = img.imageUrl || img.image_url || '';
+      const thumb = img.thumbnailUrl || img.thumbnail_url || imageUrl;
+      const sourceUrl = img.sourceUrl || img.source_product_url || '';
+      const title = img.title || 'Imagem';
+      const source = img.source || img.brand || sourceLabel || title;
+      const origin = img.origin || (img.source_type === 'legacy_store' ? 'library' : '');
+      return `<button type="button" class="image-option" data-image="${esc(imageUrl)}" data-source="${esc(sourceUrl)}" data-origin="${esc(origin)}" data-title="${esc(title)}" title="${esc(title)}"><img src="${esc(thumb)}" alt=""><span>${esc(source)}</span></button>`;
+    }).join('');
+  }
+
+  async function searchLibrary() {
+    const name = $('#editForm [name=name]')?.value.trim();
+    if (!name) { $('#imageSearchStatus').textContent = 'Digite primeiro o nome do produto.'; return; }
+    const button = $('#searchLibrary');
+    button.disabled = true;
+    $('#imageSearchStatus').textContent = 'Procurando primeiro na biblioteca da Atletic…';
+    $('#imageResults').innerHTML = '';
+    try {
+      const token = adminToken();
+      const response = await fetch(`/api/image-library?q=${encodeURIComponent(name)}&limit=30`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Biblioteca indisponível.');
+      const images = (payload.images || []).map(img => ({ ...img, origin: 'library' }));
+      $('#imageSearchStatus').textContent = images.length
+        ? `${images.length} imagem(ns) encontrada(s) na biblioteca. Selecione uma ou use “Buscar na internet”.`
+        : 'Nenhuma correspondência na biblioteca. Use “Buscar na internet”.';
+      showImageOptions(images, 'Biblioteca Atletic');
+    } catch (error) {
+      $('#imageSearchStatus').textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function saveImageToLibrary({ title, imageUrl, thumbnailUrl, sourceUrl }) {
+    try {
+      const token = adminToken();
+      if (!token || !imageUrl) return;
+      await fetch('/api/image-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          action: 'add',
+          title,
+          imageUrl,
+          thumbnailUrl: thumbnailUrl || imageUrl,
+          sourceUrl,
+          sourceType: 'serper',
+          sourceSite: 'Serper'
+        })
+      });
+    } catch {}
   }
 
   async function searchImages() {
     const name=$('#editForm [name=name]')?.value.trim(); if(!name){$('#imageSearchStatus').textContent='Digite primeiro o nome do produto.';return;}
-    const button=$('#searchImages'); button.disabled=true; $('#imageSearchStatus').textContent='Pesquisando imagens…'; $('#imageResults').innerHTML='';
+    const button=$('#searchImages'); button.disabled=true; $('#imageSearchStatus').textContent='Pesquisando imagens na internet…'; $('#imageResults').innerHTML='';
     try{
-      const token=localStorage.getItem('atletic.supabase.access_token')||'';
+      const token=adminToken();
       const response=await fetch((window.ATLETIC_CONFIG||{}).imageSearchEndpoint||'/api/product-images',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({query:name})});
       const payload=await response.json().catch(()=>({})); if(!response.ok) throw new Error(payload.error||'Busca indisponível.');
-      const images=payload.images||[]; $('#imageSearchStatus').textContent=images.length?`${images.length} opções encontradas. Selecione uma imagem.`:'Nenhuma imagem encontrada.';
-      $('#imageResults').innerHTML=images.map(img=>`<button type="button" class="image-option" data-image="${esc(img.imageUrl)}" data-source="${esc(img.sourceUrl||'')}" title="${esc(img.title)}"><img src="${esc(img.thumbnailUrl||img.imageUrl)}" alt=""><span>${esc(img.source||img.title)}</span></button>`).join('');
-    }catch(error){$('#imageSearchStatus').textContent=`${error.message} A busca fica ativa após conectar Supabase Admin e configurar SERPER_API_KEY na Vercel.`;}finally{button.disabled=false;}
+      const images=(payload.images||[]).map(img=>({...img,origin:'serper'})); $('#imageSearchStatus').textContent=images.length?`${images.length} opções encontradas na internet. Selecione uma imagem.`:'Nenhuma imagem encontrada.';
+      showImageOptions(images, 'Internet');
+    }catch(error){$('#imageSearchStatus').textContent=error.message;}finally{button.disabled=false;}
+  }
+
+  async function importLegacyImages() {
+    const button = $('#importLegacyImages');
+    button.disabled = true;
+    $('#imageSearchStatus').textContent = 'Importando imagens do site atual da Atletic… isso pode levar alguns segundos.';
+    try {
+      const token = adminToken();
+      const response = await fetch('/api/image-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action: 'import_legacy', maxPages: 12 })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível importar o catálogo.');
+      $('#imageSearchStatus').textContent = `Importação concluída: ${payload.importedImages || 0} imagens encontradas em ${payload.pagesRead || 0} página(s). Buscando correspondências para este produto…`;
+      await searchLibrary();
+    } catch (error) {
+      $('#imageSearchStatus').textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
   }
 
   $('#editForm').onsubmit = event => {
@@ -188,10 +276,12 @@
       else if(page==='brands'&&data.products.some(x=>x.brandId===id)){notify('Marca em uso. Mova os produtos ou desative a marca.');return;}
       else data[page]=data[page].filter(x=>x.id!==id); persist(); render(); return;
     }
-    const image=event.target.closest('[data-image]'); if(image){selectedImage=image.dataset.image;selectedImageSource=image.dataset.source||'';document.querySelectorAll('.image-option').forEach(x=>x.classList.toggle('selected',x===image));$('#imageSearchStatus').textContent='Imagem selecionada. Ela será vinculada ao produto ao salvar.';}
+    const image=event.target.closest('[data-image]'); if(image){selectedImage=image.dataset.image;selectedImageSource=image.dataset.source||'';document.querySelectorAll('.image-option').forEach(x=>x.classList.toggle('selected',x===image));$('#imageSearchStatus').textContent=image.dataset.origin==='library'?'Imagem da biblioteca selecionada. Ela será vinculada ao produto ao salvar.':'Imagem da internet selecionada e adicionada à biblioteca para reutilização futura.';if(image.dataset.origin==='serper')saveImageToLibrary({title:$('#editForm [name=name]')?.value.trim()||image.dataset.title,imageUrl:image.dataset.image,thumbnailUrl:image.querySelector('img')?.src||image.dataset.image,sourceUrl:image.dataset.source||''});}
   });
 
+  $('#searchLibrary').onclick=searchLibrary;
   $('#searchImages').onclick=searchImages;
+  $('#importLegacyImages').onclick=importLegacyImages;
   $('#closeEditor').onclick=()=>$('#editor').close();
   $('#adminTheme').onclick=()=>document.body.classList.toggle('dark');
   $('#adminNav').innerHTML=Object.entries(modules).map(([id,label])=>`<button data-page="${id}">${label}</button>`).join('');

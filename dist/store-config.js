@@ -1,5 +1,5 @@
 window.ATLETIC_CONFIG = Object.freeze({
-  supabaseUrl: '',
-  supabasePublishableKey: '',
+  supabaseUrl: 'https://swilmjgpivwynosvuuqm.supabase.co',
+  supabasePublishableKey: 'sb_publishable_MomWiR81AiuBKc-cNetNtA_PwAa1DdG',
   imageSearchEndpoint: '/api/product-images'
 });

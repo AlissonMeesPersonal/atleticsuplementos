@@ -3,6 +3,25 @@
   const money=v=>(Number(v||0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const safeImage=value=>{if(!value)return'';try{const url=new URL(value,location.href);return url.protocol==='https:'||url.origin===location.origin?url.href:''}catch{return''}};
+  const cutoutImage=value=>{
+    const safe=safeImage(value);
+    if(!safe)return'';
+    try{
+      const url=new URL(safe,location.href);
+      return url.hostname==='cdn.awsli.com.br'
+        ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&v=5`
+        : safe;
+    }catch{return safe}
+  };
+  const categoryFallbackImages={
+    'Proteínas':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93289184/39-21kkx9jcvb.png',
+    'Creatinas':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93310863/3-nv15p3rp0o.png',
+    'Pré-treinos':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/231959625/1-ojjc2l2hrt.png',
+    'Vitaminas':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/214409068/3-yeeorxhtyq.png',
+    'Acessórios':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/229218979/8-qhfqvibhgb.png',
+    'Barras':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/353752094/d_nq_np_2x_697324-mla96155280493_102025-f-d5a4cx9zl3.webp'
+  };
   function read(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}}
   function save(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
 
@@ -40,8 +59,21 @@
   function visual(p){return p.image?`<img src="${escape(p.image)}" alt="${escape(p.name)}" loading="lazy" style="width:100%;height:100%;object-fit:contain;padding:28px;background:#fff">`:`<div aria-hidden="true">${bottle(p)}</div>`}
 
   function renderCategories(){
-    products=AtleticStore.catalog(); categories=['Todos',...new Set(products.map(p=>p.category))]; if(!categories.includes(category))category='Todos';
-    $('#categories').innerHTML=categories.map((c,i)=>`<button class="cat" data-category="${escape(c)}"><div class="cat-image" aria-hidden="true">${i===0?'<span>↗</span>':bottle(products.find(p=>p.category===c)||products[0]||{name:c,category:c,detail:''})}</div>${c==='Todos'?'Ver tudo':escape(c)}</button>`).join('');
+    products=AtleticStore.catalog();
+    const configured=['Proteínas','Creatinas','Pré-treinos','Vitaminas','Acessórios'];
+    const available=[...new Set(products.map(p=>p.category).filter(Boolean))];
+    const ordered=[...configured.filter(c=>available.includes(c)||categoryFallbackImages[c]),...available.filter(c=>!configured.includes(c))];
+    categories=['Todos',...ordered];
+    if(!categories.includes(category))category='Todos';
+
+    const categoryVisual = categoryName => {
+      const realProduct=products.find(p=>p.category===categoryName&&safeImage(p.image));
+      const source=realProduct?.image||categoryFallbackImages[categoryName]||'';
+      if(!source)return bottle(products.find(p=>p.category===categoryName)||products[0]||{name:categoryName,category:categoryName,detail:''});
+      return `<img class="category-product-image" src="${escape(cutoutImage(source))}" alt="" loading="lazy">`;
+    };
+
+    $('#categories').innerHTML=categories.map((c,i)=>`<button class="cat" data-category="${escape(c)}"><div class="cat-image" aria-hidden="true">${i===0?'<span>↗</span>':categoryVisual(c)}</div>${c==='Todos'?'Ver tudo':escape(c)}</button>`).join('');
     $('#filters').innerHTML=categories.map(c=>`<button data-category="${escape(c)}" class="${c===category?'active':''}">${escape(c)}</button>`).join('');
   }
 

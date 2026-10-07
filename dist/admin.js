@@ -84,6 +84,76 @@
   function notify(text) { $('#adminStatus').textContent = text; $('#adminStatus').classList.add('visible'); clearTimeout(notify.timer); notify.timer = setTimeout(() => $('#adminStatus').classList.remove('visible'), 3200); }
   function brandName(id) { return data.brands.find(x => x.id === id)?.name || 'Sem marca'; }
   function categoryName(id) { return data.categories.find(x => x.id === id)?.name || 'Sem categoria'; }
+  function sameText(a,b) {
+    const normalizeText = value => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase()
+      .trim();
+    return normalizeText(a) === normalizeText(b);
+  }
+
+  function ensureBrand(name) {
+    const clean = String(name || '').trim();
+    if (!clean) return null;
+    let brand = data.brands.find(item => sameText(item.name, clean));
+    if (!brand) {
+      brand = { id: AtleticStore.uid('brand'), name: clean, active: true, source: 'image-library' };
+      data.brands.push(brand);
+    }
+    return brand;
+  }
+
+  function ensureCategory(name) {
+    const clean = String(name || '').trim();
+    if (!clean) return null;
+    let category = data.categories.find(item => sameText(item.name, clean));
+    if (!category) {
+      category = { id: AtleticStore.uid('cat'), name: clean, slug: slugify(clean), active: true, source: 'image-library' };
+      data.categories.push(category);
+    }
+    return category;
+  }
+
+  async function syncLibraryTaxonomy({ renderAfter = false, silent = true } = {}) {
+    try {
+      const token = adminToken();
+      const response = await fetch('/api/image-library?limit=500', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível sincronizar marcas da biblioteca.');
+
+      let createdBrands = 0;
+      let createdCategories = 0;
+      const beforeBrandIds = new Set(data.brands.map(item => item.id));
+      const beforeCategoryIds = new Set(data.categories.map(item => item.id));
+
+      for (const image of payload.images || []) {
+        const brand = ensureBrand(image.brand);
+        const category = ensureCategory(image.category);
+        if (brand && !beforeBrandIds.has(brand.id)) {
+          beforeBrandIds.add(brand.id);
+          createdBrands++;
+        }
+        if (category && !beforeCategoryIds.has(category.id)) {
+          beforeCategoryIds.add(category.id);
+          createdCategories++;
+        }
+      }
+
+      if (createdBrands || createdCategories) {
+        AtleticStore.save(data);
+        if (!silent) notify(`${createdBrands} marca(s) e ${createdCategories} categoria(s) criadas a partir da biblioteca.`);
+        if (renderAfter) render();
+      }
+      return { createdBrands, createdCategories };
+    } catch (error) {
+      if (!silent) notify(error.message);
+      return { createdBrands: 0, createdCategories: 0 };
+    }
+  }
+
   function productName(id) { return data.products.find(x => x.id === id)?.name || 'Produto removido'; }
   function variantLabel(id) { const v = data.variants.find(x => x.id === id); return v ? `${productName(v.productId)} · ${v.size || ''} ${v.flavor || ''}`.trim() : 'Variação removida'; }
   function balance(variantId) { return AtleticStore.stockBalance(data, variantId); }
@@ -257,6 +327,9 @@
     if(page==='orders') return renderOrders();
     if(page==='images') return renderImageLibrary();
     if(page==='settings') return renderSettings();
+    if(page==='brands' || page==='categories') {
+      syncLibraryTaxonomy({ renderAfter: true, silent: true });
+    }
     $('#adminContent').innerHTML = toolbar(modules[page]);
     $('#newRecord').onclick = () => openEditor();
     $('#tableSearch').oninput = renderRows;
@@ -418,7 +491,8 @@
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Não foi possível importar o catálogo.');
-      $('#imageSearchStatus').textContent = `Importação concluída: ${payload.importedImages || 0} imagens encontradas em ${payload.pagesRead || 0} página(s). Buscando correspondências para este produto…`;
+      const taxonomy = await syncLibraryTaxonomy({ silent: true });
+      $('#imageSearchStatus').textContent = `Importação concluída: ${payload.importedImages || 0} imagens encontradas em ${payload.pagesRead || 0} página(s). ${taxonomy.createdBrands || 0} marca(s) e ${taxonomy.createdCategories || 0} categoria(s) novas criadas.`;
       await searchLibrary();
     } catch (error) {
       $('#imageSearchStatus').textContent = error.message;
@@ -480,6 +554,39 @@
         );
       }
 
+      let linkedBrandName='';
+      let linkedCategoryName='';
+      const brandFromImage=String(image.dataset.brand||'').trim();
+      const categoryFromImage=String(image.dataset.category||'').trim();
+
+      if(brandFromImage){
+        const brand=ensureBrand(brandFromImage);
+        const brandSelect=$('#editForm [name=brandId]');
+        if(brand && brandSelect){
+          if(![...brandSelect.options].some(option=>option.value===brand.id)){
+            brandSelect.add(new Option(brand.name,brand.id));
+          }
+          brandSelect.value=brand.id;
+          linkedBrandName=brand.name;
+        }
+      }
+
+      if(categoryFromImage){
+        const category=ensureCategory(categoryFromImage);
+        const categorySelect=$('#editForm [name=categoryId]');
+        if(category && categorySelect){
+          if(![...categorySelect.options].some(option=>option.value===category.id)){
+            categorySelect.add(new Option(category.name,category.id));
+          }
+          categorySelect.value=category.id;
+          linkedCategoryName=category.name;
+        }
+      }
+
+      if(linkedBrandName || linkedCategoryName){
+        AtleticStore.save(data);
+      }
+
       const skuField=$('#editForm [name=sku]');
       let generatedSku='';
       if(skuField && (!editing || !skuField.value.trim() || /^ATL-/i.test(skuField.value.trim()))){
@@ -493,16 +600,20 @@
         : 'Imagem da internet selecionada e adicionada à biblioteca para reutilização futura.';
       const changes=[];
       if(nameChanged) changes.push(`nome atualizado para “${imageTitle}”`);
+      if(linkedBrandName) changes.push(`marca vinculada: ${linkedBrandName}`);
+      if(linkedCategoryName) changes.push(`categoria vinculada: ${linkedCategoryName}`);
       if(generatedSku) changes.push(`SKU interno criado: ${generatedSku}`);
       $('#imageSearchStatus').textContent=changes.length
         ? `${baseStatus} ${changes.join(' · ')}.`
         : baseStatus;
 
-      if(generatedSku){
-        notify(nameChanged
-          ? `Nome atualizado e SKU criado automaticamente: ${generatedSku}`
-          : `SKU interno criado automaticamente: ${generatedSku}`
-        );
+      if(generatedSku || linkedBrandName || linkedCategoryName){
+        const notificationParts=[];
+        if(nameChanged) notificationParts.push('nome atualizado');
+        if(linkedBrandName) notificationParts.push(`marca ${linkedBrandName} vinculada`);
+        if(linkedCategoryName) notificationParts.push(`categoria ${linkedCategoryName} vinculada`);
+        if(generatedSku) notificationParts.push(`SKU ${generatedSku} criado`);
+        notify(notificationParts.join(' · '));
       }
 
       if(image.dataset.origin==='serper')saveImageToLibrary({
@@ -528,5 +639,12 @@
   };
   $('#adminNav').innerHTML=Object.entries(modules).map(([id,label])=>`<button data-page="${id}">${label}</button>`).join('');
   window.addEventListener('storage', event=>{if(event.key===AtleticStore.KEY)render();if(event.key===THEME_KEY)applyTheme(readTheme());});
-  if (window.AtleticAdminAuth) window.AtleticAdminAuth.guard(render); else render();
+  if (window.AtleticAdminAuth) {
+    window.AtleticAdminAuth.guard(async () => {
+      await syncLibraryTaxonomy({ silent: true });
+      render();
+    });
+  } else {
+    syncLibraryTaxonomy({ silent: true }).finally(render);
+  }
 })();

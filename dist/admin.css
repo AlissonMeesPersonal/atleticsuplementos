@@ -21,3 +21,18 @@
 .image-search-actions .button{padding:10px 13px;gap:8px;font-size:11px;white-space:nowrap}
 .image-search-actions #searchLibrary{background:#faa21a;color:#151515}
 @media(max-width:680px){.image-search-head{align-items:stretch;flex-direction:column}.image-search-actions{justify-content:flex-start}.image-search-actions .button{flex:1 1 100%}}
+
+.library-toolbar{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin:8px 0 22px}
+.library-toolbar h2{margin-bottom:7px}
+.library-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.library-card{border:1px solid var(--border);background:var(--card);border-radius:9px;overflow:hidden;min-width:0}
+.library-image{height:180px;background:var(--surface);display:grid;place-items:center;padding:10px}
+.library-image img{width:100%;height:100%;object-fit:contain;background:#fff;border-radius:5px}
+.library-card-body{padding:13px;display:grid;gap:8px}
+.library-card-body strong{font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.library-card-body small{color:var(--muted);font-size:10px;min-height:14px}
+.library-card-body .badge{justify-self:start}
+.library-card-body a{font-size:10px;font-weight:700;color:var(--muted)}
+@media(max-width:1200px){.library-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:900px){.library-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:680px){.library-toolbar{align-items:stretch;flex-direction:column}.library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.library-image{height:145px}}

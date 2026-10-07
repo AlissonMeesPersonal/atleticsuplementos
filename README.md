@@ -1,39 +1,63 @@
 # Atletic Suplementos
 
-Prévia de design em HTML, CSS e JavaScript. Logo oficial fornecida em PDF, convertida em SVG. Catálogo e embalagens ilustrativos, preços fictícios: substituir antes do lançamento.
+Loja e central administrativa em evolução, hospedadas na Vercel e preparadas para um backend exclusivo em Supabase.
 
-## Recursos
-- Layout responsivo, temas claro/escuro persistidos.
-- Busca normalizada, categorias, ordenação de preços.
-- Carrinho persistido localmente, quantidades de 1 a 99, exclusão de itens.
-- Cupom de demonstração ATLETIC10 (10%), removível e sem acumulação.
-- Valores calculados em centavos. Não há checkout ativo nem envio de pedidos.
+## Estado atual
 
-## Executar
-Sirva `dist/` com qualquer servidor estático, por exemplo `python3 -m http.server 8080 --directory dist`.
+A vitrine e o administrativo compartilham um único modelo de dados demonstrativo (`dist/store-data.js`). Isso permite validar o fluxo completo de catálogo antes de habilitar dados reais:
 
-## Integração futura
-Conectar a plataforma já utilizada pela loja para catálogo, estoque, frete, validação de cupons e checkout. Os preços e descontos do navegador são apenas demonstrativos e nunca devem ser usados como fonte de verdade para cobrança. Validação definitiva deve ocorrer na plataforma/servidor. Substituir ilustrações pelas fotos reais dos produtos.
+- Dashboard administrativo.
+- Produtos e variações.
+- Categorias e marcas.
+- Preço de venda, preço anterior/promocional, custo, SKU, código de barras e estoque mínimo.
+- Entradas e saídas de estoque com lote, validade, motivo e histórico.
+- Cupons.
+- Banners e parceiros com período, imagens e WhatsApp.
+- Módulos reservados para clientes e pedidos.
+- Vitrine lendo o mesmo catálogo, estoque, cupons e banners.
+- Carrinho local demonstrativo; checkout real continua bloqueado.
 
-## Carrossel de campanhas e parceiros
-Edite `dist/banners.js` para cadastrar banners. Cada parceiro possui `partner`, `title`, `description`, `whatsapp` (DDI + DDD + número), `message`, `image`, `mobileImage` e `imageAlt`. O botão abre `wa.me` em nova aba com texto pré-preenchido; nenhuma mensagem é enviada automaticamente. Sem número válido, o botão permanece desabilitado. O exemplo não representa um parceiro real.
+Os dados atuais continuam locais ao navegador e servem apenas para validação. Não cadastre dados pessoais reais até a conexão com Supabase Auth/RLS.
 
-Troca a cada 6,5 segundos; controles anterior/próximo, indicadores, pausa, teclado e deslize. A troca pausa durante foco, hover ou aba oculta, e inicia pausada se o dispositivo pedir movimento reduzido.
+## Banco definitivo
 
-## Plataforma própria: estado atual
-A decisão passou a ser implementar a operação própria com Vercel e Supabase. Nenhuma assinatura paga foi contratada.
+`database/schema.sql` contém a estrutura v2 para um projeto Supabase exclusivo da Atletic. Inclui:
 
-`/admin.html` contém uma demonstração navegável do administrativo: cadastro/edição/exclusão de produtos, movimentos imutáveis de estoque por lote, cupons e banners de parceiros. Esses dados ficam apenas no navegador, não sincronizam com a vitrine e não são autenticação nem banco online. Clientes e pedidos estão bloqueados para evitar uso acidental com dados reais.
+- `store_staff`, `brands`, `categories`, `products`, `variants`, `product_images`;
+- `stock_lots`, `stock_movements`;
+- `customers`, `addresses`;
+- `coupons`, `orders`, `order_items`, `payments`, `payment_events`;
+- `banners`;
+- RLS e políticas separando catálogo público, cliente e administrador.
 
-`database/schema.sql` é uma proposta transacional de estrutura ainda não aplicada. Inclui perfis, endereços, produtos, variantes, imagens, lotes, movimentos, cupons, pedidos, itens, pagamentos, deduplicação de eventos e banners, com RLS. Não é uma migração validada nem uma implementação completa do checkout.
+Não aplique esse schema em outro projeto da empresa. Antes de vendas reais, validar Auth, RLS, Storage, checkout, reserva/expiração de estoque, webhooks, cancelamentos, estornos e backups.
 
-Bloqueio confirmado: criar projeto `atletic-suplementos` em São Paulo retornou limite de dois projetos gratuitos ativos. Nenhum projeto existente foi pausado, excluído ou alterado.
+## Busca inteligente de imagens
 
-Pendências para ativação real:
-1. Disponibilizar um projeto exclusivo Supabase, aplicar estrutura via migração e testar políticas com usuário anônimo, cliente e administrador.
-2. Integrar Supabase Auth (cadastro, confirmação, recuperação, revogação) e vincular primeiro administrador por operação confiável.
-3. Substituir armazenamento local por banco e Storage com políticas de acesso; validar arquivos e imagens.
-4. Implementar checkout no servidor com preços consultados no banco, cupom validado atomicamente, reserva/expiração de estoque e frete.
-5. Integrar provedor e webhooks assinados/idempotentes; somente confirmação confiável pode marcar pedido como pago.
-6. Validar fluxo de cancelamento, estorno, devolução de estoque, auditoria, backups e exportação.
-7. Ativar os planos adequados antes de vendas comerciais.
+`api/product-images.js` prepara a busca automática de fotos pelo nome do produto. A chave do provedor nunca é exposta no navegador.
+
+Variáveis previstas na Vercel:
+
+- `SERPER_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+
+A função exige administrador autenticado e consulta a tabela `store_staff` antes de chamar o provedor. O painel já possui o botão **Buscar imagens**, mas ele só fica funcional quando Supabase Auth e essas variáveis estiverem configurados.
+
+## Configuração do frontend
+
+`dist/store-config.js` possui os campos públicos para a futura conexão Supabase. Publishable keys podem ser usadas no navegador; nunca coloque `service_role` ou outra chave secreta nesse arquivo.
+
+## Deploy
+
+O repositório está ligado ao projeto `atleticsuplementos` na Vercel. Pushes no GitHub geram deployments automaticamente. A produção deve receber apenas versões verificadas em preview.
+
+## Próximas ativações
+
+1. Criar/selecionar o projeto Supabase exclusivo e aplicar o schema.
+2. Criar o primeiro usuário administrador por operação confiável e adicioná-lo a `store_staff`.
+3. Integrar Supabase Auth ao administrativo e à área do cliente.
+4. Migrar os cadastros locais para banco e Storage.
+5. Configurar `SERPER_API_KEY` e validar a seleção de imagens.
+6. Implementar checkout no servidor e integrar o provedor de pagamento utilizado pela empresa.
+7. Validar o fluxo completo e só então liberar vendas.

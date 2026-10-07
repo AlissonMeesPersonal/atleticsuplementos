@@ -3,6 +3,35 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = value => (Number(value || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const slugify = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  const THEME_KEY = 'atletic.theme';
+  function readTheme() {
+    try {
+      const raw = localStorage.getItem(THEME_KEY);
+      if (!raw) return 'dark';
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed === 'dark' || parsed === 'light') return parsed;
+      } catch {}
+      return raw === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  }
+  function saveTheme(theme) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  }
+  function applyTheme(theme) {
+    const dark = theme !== 'light';
+    document.body.classList.toggle('dark', dark);
+    document.documentElement.classList.toggle('theme-dark', dark);
+    const button = $('#adminTheme');
+    if (button) {
+      button.setAttribute('aria-label', dark ? 'Ativar modo claro' : 'Ativar modo escuro');
+      button.setAttribute('aria-pressed', String(dark));
+      button.title = dark ? 'Ativar modo claro' : 'Ativar modo escuro';
+    }
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#151515' : '#faf9f6');
+  }
   const modules = {
     overview: 'Dashboard', products: 'Produtos', categories: 'Categorias', brands: 'Marcas', stock: 'Estoque',
     customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', images: 'Biblioteca de imagens', settings: 'Configurações'
@@ -430,8 +459,14 @@
   $('#searchImages').onclick=searchImages;
   $('#importLegacyImages').onclick=importLegacyImages;
   $('#closeEditor').onclick=()=>$('#editor').close();
-  $('#adminTheme').onclick=()=>document.body.classList.toggle('dark');
+  applyTheme(readTheme());
+  $('#adminTheme').onclick=()=>{
+    const next=document.body.classList.contains('dark')?'light':'dark';
+    saveTheme(next);
+    applyTheme(next);
+    notify(next==='dark'?'Modo escuro salvo como preferência.':'Modo claro salvo como preferência.');
+  };
   $('#adminNav').innerHTML=Object.entries(modules).map(([id,label])=>`<button data-page="${id}">${label}</button>`).join('');
-  window.addEventListener('storage', event=>{if(event.key===AtleticStore.KEY)render();});
+  window.addEventListener('storage', event=>{if(event.key===AtleticStore.KEY)render();if(event.key===THEME_KEY)applyTheme(readTheme());});
   if (window.AtleticAdminAuth) window.AtleticAdminAuth.guard(render); else render();
 })();

@@ -360,7 +360,40 @@
       else if(page==='brands'&&data.products.some(x=>x.brandId===id)){notify('Marca em uso. Mova os produtos ou desative a marca.');return;}
       else data[page]=data[page].filter(x=>x.id!==id); persist(); render(); return;
     }
-    const image=event.target.closest('[data-image]'); if(image){selectedImage=image.dataset.image;selectedImageSource=image.dataset.source||'';document.querySelectorAll('.image-option').forEach(x=>x.classList.toggle('selected',x===image));$('#imageSearchStatus').textContent=image.dataset.origin==='library'?'Imagem da biblioteca selecionada. Ela será vinculada ao produto ao salvar.':'Imagem da internet selecionada e adicionada à biblioteca para reutilização futura.';if(image.dataset.origin==='serper')saveImageToLibrary({title:$('#editForm [name=name]')?.value.trim()||image.dataset.title,imageUrl:image.dataset.image,thumbnailUrl:image.querySelector('img')?.src||image.dataset.image,sourceUrl:image.dataset.source||''});}
+    const image=event.target.closest('[data-image]'); if(image){
+      selectedImage=image.dataset.image;
+      selectedImageSource=image.dataset.source||'';
+      document.querySelectorAll('.image-option').forEach(x=>x.classList.toggle('selected',x===image));
+
+      const nameField=$('#editForm [name=name]');
+      const imageTitle=String(image.dataset.title||'').trim();
+      const previousName=String(nameField?.value||'').trim();
+      let nameChanged=false;
+
+      if(nameField && imageTitle && imageTitle!==previousName){
+        nameField.value=imageTitle;
+        nameField.dispatchEvent(new Event('input',{bubbles:true}));
+        nameChanged=true;
+        notify(previousName
+          ? `Nome do produto alterado para “${imageTitle}” de acordo com a imagem selecionada.`
+          : `Nome do produto preenchido automaticamente como “${imageTitle}”.`
+        );
+      }
+
+      const baseStatus=image.dataset.origin==='library'
+        ? 'Imagem da biblioteca selecionada. Ela será vinculada ao produto ao salvar.'
+        : 'Imagem da internet selecionada e adicionada à biblioteca para reutilização futura.';
+      $('#imageSearchStatus').textContent=nameChanged
+        ? `${baseStatus} O nome do produto também foi atualizado para “${imageTitle}”.`
+        : baseStatus;
+
+      if(image.dataset.origin==='serper')saveImageToLibrary({
+        title:imageTitle||nameField?.value.trim()||'Produto',
+        imageUrl:image.dataset.image,
+        thumbnailUrl:image.querySelector('img')?.src||image.dataset.image,
+        sourceUrl:image.dataset.source||''
+      });
+    }
   });
 
   $('#searchLibrary').onclick=searchLibrary;

@@ -196,5 +196,5 @@
   $('#adminTheme').onclick=()=>document.body.classList.toggle('dark');
   $('#adminNav').innerHTML=Object.entries(modules).map(([id,label])=>`<button data-page="${id}">${label}</button>`).join('');
   window.addEventListener('storage', event=>{if(event.key===AtleticStore.KEY)render();});
-  render();
+  if (window.AtleticAdminAuth) window.AtleticAdminAuth.guard(render); else render();
 })();

@@ -11,6 +11,7 @@
   let editing = null;
   let selectedImage = '';
   let selectedImageSource = '';
+  let libraryImageCache = [];
   let data = AtleticStore.load();
 
   function refresh() { data = AtleticStore.load(); }
@@ -227,11 +228,12 @@
     else if(page==='coupons') { const r=data.coupons.find(x=>x.id===id)||{}; html=input('code','Código','text',r.code||'',[],false,true)+input('kind','Tipo','select',r.kind||'percent',[['percent','Percentual'],['fixed','Valor fixo']],false,true)+input('amount','Desconto',r.kind==='fixed'?'money':'number',r.kind==='fixed'?r.amount:Number(r.amount||10),[],false,true)+input('minimum','Compra mínima','money',r.minimum||0)+input('startsAt','Início','datetime-local',r.startsAt||'')+input('expiresAt','Fim','datetime-local',r.expiresAt||'')+input('active','Ativo','checkbox',r.active??true); }
     else if(page==='banners') { const r=data.banners.find(x=>x.id===id)||{}; html=input('type','Tipo','select',r.type||'campaign',[['campaign','Campanha'],['partner','Parceiro']],false,true)+input('position','Ordem','number',r.position||0)+input('partner','Parceiro','text',r.partner||'')+input('eyebrow','Chamada curta','text',r.eyebrow||'')+input('title','Título','textarea',r.title||'',[],true,true)+input('description','Descrição','textarea',r.description||'',[],true)+input('button','Texto do botão','text',r.button||'Saiba mais')+input('href','Link da campanha','text',r.href||'#catalog')+input('whatsapp','WhatsApp (DDI+DDD+número)','tel',r.whatsapp||'')+input('message','Mensagem do WhatsApp','textarea',r.message||'',[],true)+input('image','Imagem desktop HTTPS','url',r.image||'',[],true)+input('mobileImage','Imagem mobile HTTPS','url',r.mobileImage||'',[],true)+input('startsAt','Início','datetime-local',r.startsAt||'')+input('expiresAt','Fim','datetime-local',r.expiresAt||'')+input('active','Ativo','checkbox',r.active??true); }
     $('#editTitle').textContent = page==='stock'?'Movimentar estoque':`${id?'Editar':'Novo'} ${modules[page].toLowerCase()}`;
-    $('#fields').innerHTML=html; $('#editor').showModal();
-    if(page==='products'){
-      const nameField=$('#editForm [name=name]');
-      nameField?.addEventListener('change',()=>{if(nameField.value.trim().length>=3)searchLibrary();});
-    }
+    $('#fields').innerHTML=html;
+    $('#libraryBrowseTools').hidden=true;
+    $('#libraryFilter').value='';
+    $('#libraryBrowseCount').textContent='';
+    libraryImageCache=[];
+    $('#editor').showModal();
   }
 
   function adminToken() {
@@ -250,26 +252,53 @@
     }).join('');
   }
 
+  function normalizeLibraryFilter(value='') {
+    return String(value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase()
+      .trim();
+  }
+
+  function renderLibraryBrowse() {
+    const term = normalizeLibraryFilter($('#libraryFilter')?.value || '');
+    const filtered = term
+      ? libraryImageCache.filter(img => normalizeLibraryFilter([img.title,img.brand,img.category,img.sku].filter(Boolean).join(' ')).includes(term))
+      : libraryImageCache;
+
+    $('#libraryBrowseCount').textContent = term
+      ? `${filtered.length} de ${libraryImageCache.length} imagens`
+      : `${libraryImageCache.length} imagens`;
+
+    showImageOptions(filtered, 'Biblioteca Atletic');
+
+    if (!filtered.length) {
+      $('#imageResults').innerHTML = '<div class="empty-panel">Nenhuma imagem encontrada com esse filtro.</div>';
+    }
+  }
+
   async function searchLibrary() {
-    const name = $('#editForm [name=name]')?.value.trim();
-    if (!name) { $('#imageSearchStatus').textContent = 'Digite primeiro o nome do produto.'; return; }
     const button = $('#searchLibrary');
     button.disabled = true;
-    $('#imageSearchStatus').textContent = 'Procurando primeiro na biblioteca da Atletic…';
+    $('#libraryBrowseTools').hidden = false;
+    $('#libraryFilter').value = '';
+    $('#imageSearchStatus').textContent = 'Carregando toda a biblioteca da Atletic…';
     $('#imageResults').innerHTML = '';
     try {
       const token = adminToken();
-      const response = await fetch(`/api/image-library?q=${encodeURIComponent(name)}&limit=30`, {
+      const response = await fetch('/api/image-library?limit=500', {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Biblioteca indisponível.');
-      const images = (payload.images || []).map(img => ({ ...img, origin: 'library' }));
-      $('#imageSearchStatus').textContent = images.length
-        ? `${images.length} imagem(ns) encontrada(s) na biblioteca. Selecione uma ou use “Buscar na internet”.`
-        : 'Nenhuma correspondência na biblioteca. Use “Buscar na internet”.';
-      showImageOptions(images, 'Biblioteca Atletic');
+      libraryImageCache = (payload.images || []).map(img => ({ ...img, origin: 'library' }));
+      $('#imageSearchStatus').textContent = libraryImageCache.length
+        ? 'Toda a biblioteca foi carregada. Escolha visualmente um produto ou use o filtro abaixo.'
+        : 'A biblioteca ainda está vazia. Importe o site atual ou use “Buscar na internet”.';
+      renderLibraryBrowse();
     } catch (error) {
+      libraryImageCache = [];
+      $('#libraryBrowseCount').textContent = '';
       $('#imageSearchStatus').textContent = error.message;
     } finally {
       button.disabled = false;
@@ -298,7 +327,7 @@
 
   async function searchImages() {
     const name=$('#editForm [name=name]')?.value.trim(); if(!name){$('#imageSearchStatus').textContent='Digite primeiro o nome do produto.';return;}
-    const button=$('#searchImages'); button.disabled=true; $('#imageSearchStatus').textContent='Pesquisando imagens na internet…'; $('#imageResults').innerHTML='';
+    const button=$('#searchImages'); button.disabled=true; $('#libraryBrowseTools').hidden=true; $('#imageSearchStatus').textContent='Pesquisando imagens na internet…'; $('#imageResults').innerHTML='';
     try{
       const token=adminToken();
       const response=await fetch((window.ATLETIC_CONFIG||{}).imageSearchEndpoint||'/api/product-images',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({query:name})});
@@ -397,6 +426,7 @@
   });
 
   $('#searchLibrary').onclick=searchLibrary;
+  $('#libraryFilter').oninput=renderLibraryBrowse;
   $('#searchImages').onclick=searchImages;
   $('#importLegacyImages').onclick=importLegacyImages;
   $('#closeEditor').onclick=()=>$('#editor').close();

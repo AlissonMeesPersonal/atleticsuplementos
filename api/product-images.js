@@ -13,7 +13,7 @@ async function validateAdmin(req) {
   const user = await userResponse.json();
   if (!user?.id) return false;
 
-  const staffResponse = await fetch(`${supabaseUrl}/rest/v1/store_staff?user_id=eq.${encodeURIComponent(user.id)}&role=eq.admin&active=is.true&select=user_id`, {
+  const staffResponse = await fetch(`${supabaseUrl}/rest/v1/admin_users?id=eq.${encodeURIComponent(user.id)}&role=eq.admin&active=is.true&select=id`, {
     headers: { apikey: publishableKey, Authorization: authorization, Accept: 'application/json' }
   });
   if (!staffResponse.ok) return false;

@@ -23,6 +23,52 @@ function normalize(value = '') {
     .trim();
 }
 
+function inferBrand(title = '', current = '') {
+  const text = normalize([title, current].filter(Boolean).join(' '));
+  const brands = [
+    ['Max Titanium', /\bmax titanium\b/],
+    ['Integralmédica', /\bintegralmedica\b/],
+    ['DUX Nutrition', /\bdux(?: nutrition)?\b/],
+    ['Black Skull', /\bblack skull\b/],
+    ['Evolve', /\bevolve\b/],
+    ['Probiótica', /\bprobiotica\b/],
+    ['Shark Pro', /\bshark pro\b/],
+    ['Nutrata', /\bnutrata\b/],
+    ['Growth Supplements', /\bgrowth(?: supplements)?\b/],
+    ['Dark Lab', /\bdark lab\b/],
+    ['Adaptogen', /\badaptogen\b/]
+  ];
+  for (const [name, pattern] of brands) if (pattern.test(text)) return name;
+  return cleanText(current || '') || null;
+}
+
+function inferCategory(title = '', current = '') {
+  if (cleanText(current || '')) return cleanText(current);
+  const text = normalize(title);
+  if (/\bcreatin(a|e)\b/.test(text)) return 'Creatinas';
+  if (/\b(whey|protein|proteina|iso whey)\b/.test(text)) return 'Proteínas';
+  if (/\b(pre workout|pre treino|pre-treino)\b/.test(text)) return 'Pré-treinos';
+  if (/\b(vitamina|multivitamin|omega|colageno)\b/.test(text)) return 'Vitaminas';
+  if (/\b(glutamina|bcaa|amino)\b/.test(text)) return 'Aminoácidos';
+  if (/\b(coqueteleira|shaker|garrafa|acessorio)\b/.test(text)) return 'Acessórios';
+  if (/\b(barra|bar )\b/.test(text)) return 'Barras';
+  return null;
+}
+
+function enrichRecord(record) {
+  const title = cleanText(record.title || '');
+  if (!title || /--PRODUTO_|google safe browsing/i.test(title)) return null;
+  const brand = inferBrand(title, record.brand);
+  const category = inferCategory(title, record.category);
+  return {
+    ...record,
+    title,
+    brand,
+    category,
+    search_text: normalize([title, brand, category, record.sku].filter(Boolean).join(' '))
+  };
+}
+
 function attr(attrs, name) {
   const match = String(attrs).match(new RegExp('(?:^|\\s)' + name + '\\s*=\\s*["\\\']([^"\\\']+)["\\\']', 'i'));
   return match ? match[1] : '';
@@ -65,9 +111,8 @@ function extractListingImages(html, pageUrl) {
       }
     }
 
-    records.push({
+    const record = enrichRecord({
       title: alt.replace(/\s+-\s+Imagem\s+\d+$/i, ''),
-      search_text: normalize(alt),
       brand: null,
       category: null,
       image_url: imageUrl,
@@ -78,6 +123,7 @@ function extractListingImages(html, pageUrl) {
       sku: null,
       metadata: { imported_from: pageUrl }
     });
+    if (record) records.push(record);
   }
   return records;
 }
@@ -129,9 +175,8 @@ function extractProductPage(html, pageUrl) {
     rawImages.flatMap(image => typeof image === 'string' ? [image] : [image?.url, image?.contentUrl]).filter(Boolean).forEach((raw, index) => {
       const imageUrl = absoluteUrl(raw, pageUrl);
       if (!name || !goodImage(imageUrl)) return;
-      records.push({
+      const record = enrichRecord({
         title: name,
-        search_text: normalize([name, brand, sku].filter(Boolean).join(' ')),
         brand: brand || null,
         category: cleanText(product.category || '') || null,
         image_url: imageUrl,
@@ -142,6 +187,7 @@ function extractProductPage(html, pageUrl) {
         sku: sku || null,
         metadata: { image_position: index + 1, imported_from: pageUrl }
       });
+      if (record) records.push(record);
     });
   }
 
@@ -153,9 +199,8 @@ function extractProductPage(html, pageUrl) {
       .filter(goodImage);
     ogImages.forEach((imageUrl, index) => {
       if (!name) return;
-      records.push({
+      const record = enrichRecord({
         title: name,
-        search_text: normalize(name),
         brand: null,
         category: null,
         image_url: imageUrl,
@@ -166,6 +211,7 @@ function extractProductPage(html, pageUrl) {
         sku: null,
         metadata: { image_position: index + 1, imported_from: pageUrl }
       });
+      if (record) records.push(record);
     });
   }
 
@@ -311,11 +357,13 @@ export default async function handler(req, res) {
       if (!title || !goodImage(imageUrl) && !/^https:\/\//i.test(imageUrl)) {
         return json(res, 400, { error: 'Imagem inválida.' });
       }
+      const inferredBrand = inferBrand(title, req.body?.brand);
+      const inferredCategory = inferCategory(title, req.body?.category);
       const row = {
         title,
-        search_text: normalize([title, req.body?.brand, req.body?.sku].filter(Boolean).join(' ')),
-        brand: cleanText(req.body?.brand || '') || null,
-        category: cleanText(req.body?.category || '') || null,
+        search_text: normalize([title, inferredBrand, inferredCategory, req.body?.sku].filter(Boolean).join(' ')),
+        brand: inferredBrand,
+        category: inferredCategory,
         image_url: imageUrl,
         thumbnail_url: absoluteUrl(req.body?.thumbnailUrl || imageUrl),
         source_product_url: absoluteUrl(req.body?.sourceUrl || '') || null,

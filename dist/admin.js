@@ -5,7 +5,7 @@
   const slugify = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   const modules = {
     overview: 'Dashboard', products: 'Produtos', categories: 'Categorias', brands: 'Marcas', stock: 'Estoque',
-    customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', settings: 'Configurações'
+    customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', images: 'Biblioteca de imagens', settings: 'Configurações'
   };
   let page = 'overview';
   let editing = null;
@@ -92,6 +92,89 @@
     $('#records').innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Total</th><th>Data</th></tr></thead><tbody>${rows.map(o=>`<tr><td>${esc(o.id)}</td><td>${esc(data.customers.find(c=>c.id===o.customerId)?.name||'—')}</td><td><span class="badge">${esc(o.status)}</span></td><td>${money(o.total)}</td><td>${esc(o.createdAt||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-panel"><h2>Pedidos</h2><p>Checkout e pedidos reais ficam bloqueados até o servidor validar preço, cupom, frete, reserva de estoque e pagamento. O schema já possui as tabelas necessárias.</p></div>';
   }
 
+  async function renderImageLibrary() {
+    $('#adminContent').innerHTML = `
+      <div class="library-toolbar">
+        <div>
+          <h2>Biblioteca de imagens</h2>
+          <p class="muted">Imagens importadas do site atual e imagens escolhidas nas buscas da internet.</p>
+        </div>
+        <button id="libraryImport" class="button">Importar / atualizar site atual</button>
+      </div>
+      <div class="admin-toolbar">
+        <input id="librarySearch" type="search" placeholder="Buscar por produto, marca ou categoria" aria-label="Buscar imagens">
+        <div class="status-row"><span class="status-chip" id="libraryCount">Carregando…</span></div>
+      </div>
+      <p class="muted" id="libraryStatus"></p>
+      <div id="libraryGrid" class="library-grid"><div class="empty-panel">Carregando biblioteca…</div></div>
+    `;
+
+    const search = $('#librarySearch');
+    const grid = $('#libraryGrid');
+    const count = $('#libraryCount');
+    const status = $('#libraryStatus');
+
+    async function loadLibrary() {
+      const token = adminToken();
+      const q = search.value.trim();
+      grid.innerHTML = '<div class="empty-panel">Carregando biblioteca…</div>';
+      try {
+        const response = await fetch(`/api/image-library?q=${encodeURIComponent(q)}&limit=60`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar a biblioteca.');
+        const images = payload.images || [];
+        count.textContent = `${images.length} imagem(ns)`;
+        status.textContent = q ? `Resultado para “${q}”.` : 'Mostrando as imagens mais recentes.';
+        grid.innerHTML = images.length ? images.map(img => `
+          <article class="library-card">
+            <div class="library-image"><img src="${esc(img.thumbnail_url || img.image_url)}" alt="${esc(img.title)}"></div>
+            <div class="library-card-body">
+              <strong title="${esc(img.title)}">${esc(img.title)}</strong>
+              <small>${esc([img.brand, img.category].filter(Boolean).join(' · ') || 'Sem classificação')}</small>
+              <span class="badge">${img.source_type === 'legacy_store' ? 'SITE ATUAL' : img.source_type === 'serper' ? 'INTERNET' : 'BIBLIOTECA'}</span>
+              ${img.source_product_url ? `<a href="${esc(img.source_product_url)}" target="_blank" rel="noopener">Ver origem ↗</a>` : ''}
+            </div>
+          </article>
+        `).join('') : '<div class="empty-panel">Nenhuma imagem encontrada.</div>';
+      } catch (error) {
+        grid.innerHTML = `<div class="empty-panel">${esc(error.message)}</div>`;
+        count.textContent = 'Erro';
+      }
+    }
+
+    let debounce;
+    search.oninput = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(loadLibrary, 250);
+    };
+
+    $('#libraryImport').onclick = async () => {
+      const button = $('#libraryImport');
+      button.disabled = true;
+      status.textContent = 'Atualizando imagens a partir do site atual…';
+      try {
+        const token = adminToken();
+        const response = await fetch('/api/image-library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ action: 'import_legacy', maxPages: 20 })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Falha na importação.');
+        status.textContent = `Atualização concluída: ${payload.importedImages || 0} imagem(ns) encontradas em ${payload.pagesRead || 0} página(s).`;
+        await loadLibrary();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    await loadLibrary();
+  }
+
   function renderSettings() {
     const cfg=window.ATLETIC_CONFIG||{};
     $('#adminContent').innerHTML=`<div class="admin-grid"><section class="panel"><h2>Integrações</h2><div class="status-row"><span class="status-chip">GitHub → Vercel: conectado</span><span class="status-chip">Supabase: ${cfg.supabaseUrl?'configurado':'aguardando projeto exclusivo'}</span><span class="status-chip">Busca de imagens: função criada</span><span class="status-chip">Pagamento: integrar depois</span></div><p class="muted" style="margin-top:16px">A chave secreta do provedor de imagens deve ficar apenas nas variáveis da Vercel. O navegador nunca recebe essa chave.</p></section><section class="panel"><h2>Dados de demonstração</h2><p class="muted">Admin e vitrine deste navegador compartilham os mesmos cadastros locais.</p><div class="button-row"><button id="resetDemo" class="button secondary">Restaurar exemplos</button></div></section></div>`;
@@ -105,6 +188,7 @@
     if(page==='overview') return renderOverview();
     if(page==='customers') return renderCustomers();
     if(page==='orders') return renderOrders();
+    if(page==='images') return renderImageLibrary();
     if(page==='settings') return renderSettings();
     $('#adminContent').innerHTML = toolbar(modules[page]);
     $('#newRecord').onclick = () => openEditor();

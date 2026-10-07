@@ -35,7 +35,14 @@
       <div class="drawer-head"><h2 id="editTitle">Cadastro</h2><button type="button" id="closeEditor" aria-label="Fechar">×</button></div>
       <div id="fields"></div>
       <section id="imageSearchBox" class="image-search" hidden>
-        <div class="image-search-head"><div><strong>Imagem do produto</strong><small>Pesquise pelo nome e selecione a melhor foto.</small></div><button type="button" id="searchImages" class="button secondary">Buscar imagens</button></div>
+        <div class="image-search-head">
+          <div><strong>Imagem do produto</strong><small>Primeiro procuramos na biblioteca da Atletic. Se não encontrar, busque na internet.</small></div>
+          <div class="image-search-actions">
+            <button type="button" id="searchLibrary" class="button">Buscar na biblioteca</button>
+            <button type="button" id="searchImages" class="button secondary">Buscar na internet</button>
+            <button type="button" id="importLegacyImages" class="button secondary">Importar site atual</button>
+          </div>
+        </div>
         <div id="imageSearchStatus" class="muted"></div>
         <div id="imageResults" class="image-results"></div>
       </section>

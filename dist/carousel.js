@@ -7,13 +7,15 @@
     const heroArt=document.querySelector('.hero-art');
     if(!heroArt)return;
 
+    const transparentCandidate=url=>/\.(png|webp)(?:\?|$)/i.test(String(url||''));
+
     const catalog=(window.AtleticStore?AtleticStore.catalog():[])
-      .filter(product=>safeImage(product.image))
+      .filter(product=>safeImage(product.image)&&transparentCandidate(product.image))
       .map(product=>({name:product.name,brand:product.brand||product.category||'Atletic',image:safeImage(product.image)}));
 
     const fallback=[
       {name:'Creatina (300g) - Max Titanium',brand:'Max Titanium',image:'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93310863/3-nv15p3rp0o.png'},
-      {name:'Whey Protein Concentrado (900g) DUX Nutrition',brand:'DUX Nutrition',image:'https://cdn.awsli.com.br/800x800/1361/1361851/produto/92616996/dux-novo-ks7qr9zwhy.jpg'},
+      {name:'Creatina Monohidratada (300g) DUX Nutrition',brand:'DUX Nutrition',image:'https://cdn.awsli.com.br/800x800/1361/1361851/produto/203243364/111-86b80iu4d2.png'},
       {name:'Pre Workout (150g) Evolve',brand:'Evolve',image:'https://cdn.awsli.com.br/800x800/1361/1361851/produto/231959625/1-ojjc2l2hrt.png'}
     ];
 

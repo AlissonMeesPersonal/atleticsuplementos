@@ -287,7 +287,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const q = normalize(String(req.query?.q || '')).slice(0, 100);
-      const limit = Math.max(1, Math.min(Number(req.query?.limit) || 24, 60));
+      const limit = Math.max(1, Math.min(Number(req.query?.limit) || 24, 500));
       let path = `image_library?select=id,title,brand,category,image_url,thumbnail_url,source_product_url,source_type,sku&active=eq.true&order=updated_at.desc&limit=${limit}`;
       if (q) {
         const safe = q.replace(/[(),*%]/g, ' ').replace(/\s+/g, ' ').trim();

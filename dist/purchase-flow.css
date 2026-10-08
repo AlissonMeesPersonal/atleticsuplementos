@@ -15,7 +15,25 @@
 .pf-shipping-form{margin-bottom:0}
 .pf-shipping-form label{display:block;font-size:11px;font-weight:700;margin-bottom:8px}
 .pf-helper{font-size:10px;line-height:1.5;color:var(--muted);margin:8px 0 22px}
-.pf-checkout{width:min(760px,calc(100% - 32px));max-height:calc(100dvh - 32px);inset:auto;margin:auto;padding:0;border:1px solid var(--border);border-radius:18px;background:var(--bg);color:var(--text)}
+.pf-checkout{
+  position:fixed!important;
+  top:50%!important;
+  left:50%!important;
+  right:auto!important;
+  bottom:auto!important;
+  width:min(760px,calc(100vw - 64px))!important;
+  height:auto!important;
+  max-width:760px!important;
+  max-height:calc(100dvh - 64px)!important;
+  margin:0!important;
+  padding:0!important;
+  transform:translate(-50%,-50%)!important;
+  overflow:auto!important;
+  border:1px solid var(--border)!important;
+  border-radius:18px!important;
+  background:var(--bg)!important;
+  color:var(--text)!important;
+}
 .pf-checkout::backdrop{background:rgba(0,0,0,.76);backdrop-filter:blur(6px)}
 .pf-checkout-shell{padding:28px}
 .pf-checkout-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}
@@ -54,7 +72,12 @@
 .pf-payment-note{font-size:10px;color:var(--muted);line-height:1.5;margin:14px 0}
 .pf-message{min-height:18px;color:var(--orange);font-size:11px;line-height:1.5;margin-top:10px}
 @media(max-width:700px){
-  .pf-checkout{width:calc(100% - 16px);max-height:calc(100dvh - 16px);border-radius:14px}
+  .pf-checkout{
+    width:calc(100vw - 16px)!important;
+    max-width:calc(100vw - 16px)!important;
+    max-height:calc(100dvh - 24px)!important;
+    border-radius:14px!important;
+  }
   .pf-checkout-shell{padding:22px 16px}
   .pf-checkout-head h2{font-size:28px}
   .pf-progress{margin:22px 0 28px;gap:6px}

@@ -12,7 +12,7 @@
     }catch{return safe}
   };
   const whatsappUrl=(number,message)=>{const digits=String(number||'').replace(/\D/g,'');return /^[1-9]\d{9,14}$/.test(digits)?`https://wa.me/${digits}?text=${encodeURIComponent(message||'')}`:''};
-  function renderHeroProducts(){
+  async function renderHeroProducts(){
     const heroArt=document.querySelector('.hero-art');
     if(!heroArt)return;
 
@@ -28,9 +28,26 @@
       {name:'Pre Workout (150g) Evolve',brand:'Evolve',image:heroImage('https://cdn.awsli.com.br/800x800/1361/1361851/produto/231959625/1-ojjc2l2hrt.png')}
     ];
 
+    let configured=[];
+    try{
+      const response=await fetch('/api/site-visuals');
+      const payload=await response.json().catch(()=>({}));
+      if(response.ok&&Array.isArray(payload.visuals?.hero)){
+        configured=payload.visuals.hero
+          .filter(item=>safeImage(item?.image_url))
+          .slice(0,3)
+          .map(item=>({
+            name:item.title||'Produto Atletic',
+            brand:item.brand||item.category||'Atletic',
+            image:heroImage(item.image_url)
+          }));
+      }
+    }catch{}
+
     const picked=[];
     const used=new Set();
-    [...catalog,...fallback].forEach(product=>{
+    const source=configured.length===3?configured:[...catalog,...fallback];
+    source.forEach(product=>{
       if(picked.length>=3)return;
       const key=String(product.image||'').toLowerCase();
       if(!key||used.has(key))return;

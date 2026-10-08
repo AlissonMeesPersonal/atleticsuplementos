@@ -22,3 +22,8 @@
 .hero-real-product-3 .hero-real-product-image{height:175px}
 @media(max-width:900px){.hero-real-product-1{width:175px;right:4%;top:82px}.hero-real-product-1 .hero-real-product-image{height:245px}.hero-real-product-2{width:145px;left:0;top:195px}.hero-real-product-2 .hero-real-product-image{height:195px}.hero-real-product-3{width:115px;left:37%;top:55px}.hero-real-product-3 .hero-real-product-image{height:150px}}
 @media(max-width:620px){.hero-product-stack{inset:0}.hero-real-product-meta{bottom:-42px}.hero-real-product-meta small{display:none}.hero-real-product-1{width:135px;right:5%;top:42px}.hero-real-product-1 .hero-real-product-image{height:185px}.hero-real-product-2{width:108px;left:7%;top:126px}.hero-real-product-2 .hero-real-product-image{height:145px}.hero-real-product-3{width:88px;left:40%;top:22px}.hero-real-product-3 .hero-real-product-image{height:112px}}
+
+.hero-real-product-image.original-selected img{filter:none!important;transform:none!important;image-rendering:auto}
+.hero-real-product:hover .hero-real-product-image.original-selected img{filter:none!important;transform:none!important}
+.category-product-image.original-selected{filter:none!important;transform:none!important;image-rendering:auto}
+.cat:hover .category-product-image.original-selected{transform:none!important}

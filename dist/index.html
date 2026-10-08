@@ -11,11 +11,11 @@
   <title>Atletic Suplementos | Seu próximo nível</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=20261008-1007">
+  <link rel="stylesheet" href="styles.css?v=20261008-1035">
   <script defer src="store-config.js?v=20261008-1007"></script>
-  <script defer src="store-data.js?v=20261008-1007"></script>
-  <script defer src="app.js?v=20261008-1007"></script>
-  <script defer src="carousel.js?v=20261008-1007"></script>
+  <script defer src="store-data.js?v=20261008-1035"></script>
+  <script defer src="app.js?v=20261008-1035"></script>
+  <script defer src="carousel.js?v=20261008-1035></script>
 </head>
 <body>
 <div class="announcement">SEU TREINO. SUA ROTINA. SEU PRÓXIMO NÍVEL. <span>ATLETIC SUPLEMENTOS ↗</span></div>
@@ -48,12 +48,26 @@
       <p id="productViewDetail" class="product-view-detail"></p>
       <p id="productViewDescription" class="product-view-description"></p>
       <div class="product-view-stock" id="productViewStock"></div>
-      <div class="product-view-price-row">
-        <div>
-          <small id="productViewCompare" class="product-view-compare"></small>
-          <strong id="productViewPrice"></strong>
+      <div id="productViewVariants" class="product-view-variants" hidden>
+        <div class="product-option-label"><span>Escolha o sabor</span><small id="productViewFlavorStatus"></small></div>
+        <div id="productViewVariantOptions" class="product-variant-options"></div>
+      </div>
+      <div class="product-view-purchase">
+        <div class="product-view-price-row">
+          <div>
+            <small id="productViewCompare" class="product-view-compare"></small>
+            <strong id="productViewPrice"></strong>
+          </div>
+          <div class="product-view-qty" aria-label="Quantidade">
+            <button id="productQtyMinus" type="button" aria-label="Diminuir quantidade">−</button>
+            <span id="productQtyValue">1</span>
+            <button id="productQtyPlus" type="button" aria-label="Aumentar quantidade">+</button>
+          </div>
         </div>
-        <button id="productViewAdd" class="button product-view-add" type="button">Adicionar à sacola <span>+</span></button>
+        <div class="product-view-actions">
+          <button id="productViewAdd" class="button product-view-add secondary-action" type="button">Adicionar à sacola</button>
+          <button id="productBuyNow" class="button product-buy-now" type="button">Comprar agora <span>↗</span></button>
+        </div>
       </div>
       <dl class="product-view-specs">
         <div><dt>Marca</dt><dd id="productViewBrand"></dd></div>
@@ -63,7 +77,105 @@
     </div>
   </div>
 </dialog>
-<dialog id="cart"><div class="drawer-head"><div><p class="eyebrow">SUAS ESCOLHAS</p><h2>Minha sacola <span id="drawerCount">0</span></h2></div><button id="cartClose" aria-label="Fechar carrinho">×</button></div><div id="cartItems"></div><div class="cart-bottom"><form id="couponForm"><label for="coupon">Tem um cupom?</label><div class="coupon-row"><input id="coupon" placeholder="Digite seu cupom" maxlength="30"><button class="button">Aplicar</button></div></form><p id="couponMessage" aria-live="polite">Digite um cupom válido cadastrado pela loja.</p><div class="total-row"><span>Subtotal</span><strong id="subtotal"></strong></div><div class="total-row"><span>Desconto <button id="removeCoupon" hidden aria-label="Remover cupom">×</button></span><strong id="discount"></strong></div><div class="total-row"><span>Entrega</span><span>A definir no checkout</span></div><div class="total-row grand"><span>Total dos produtos</span><strong id="total"></strong></div><button id="checkout" class="button checkout">Continuar compra ↗</button><p class="demo-note">Nenhum pedido ou cobrança será realizado nesta etapa.</p><p id="checkoutMessage" role="status"></p></div></dialog>
+<dialog id="cart"><div class="drawer-head"><div><p class="eyebrow">SUAS ESCOLHAS</p><h2>Minha sacola <span id="drawerCount">0</span></h2></div><button id="cartClose" aria-label="Fechar carrinho">×</button></div><div id="cartItems"></div><div class="cart-bottom">
+<form id="shippingForm" class="shipping-form">
+  <label for="shippingCep">Calcular entrega</label>
+  <div class="coupon-row"><input id="shippingCep" inputmode="numeric" autocomplete="postal-code" placeholder="Digite seu CEP" maxlength="9"><button class="button">Usar CEP</button></div>
+</form>
+<p id="shippingMessage" class="cart-helper" aria-live="polite">Informe seu CEP para continuar mais rápido no checkout.</p>
+<form id="couponForm"><label for="coupon">Tem um cupom?</label><div class="coupon-row"><input id="coupon" placeholder="Digite seu cupom" maxlength="30"><button class="button">Aplicar</button></div></form><p id="couponMessage" aria-live="polite">Digite um cupom válido cadastrado pela loja.</p><div class="total-row"><span>Subtotal</span><strong id="subtotal"></strong></div><div class="total-row"><span>Desconto <button id="removeCoupon" hidden aria-label="Remover cupom">×</button></span><strong id="discount"></strong></div><div class="total-row"><span>Entrega</span><span>A definir no checkout</span></div><div class="total-row grand"><span>Total dos produtos</span><strong id="total"></strong></div><button id="checkout" class="button checkout">Finalizar compra ↗</button><p class="demo-note">Seus dados ficam salvos neste dispositivo durante esta etapa de desenvolvimento.</p><p id="checkoutMessage" role="status"></p></div></dialog>
+<dialog id="checkoutFlow" class="checkout-dialog" aria-labelledby="checkoutTitle">
+  <div class="checkout-shell">
+    <div class="checkout-head">
+      <div>
+        <p class="eyebrow">CHECKOUT RÁPIDO</p>
+        <h2 id="checkoutTitle">Finalize sua compra</h2>
+      </div>
+      <button id="checkoutClose" type="button" aria-label="Fechar checkout">×</button>
+    </div>
+    <div class="checkout-progress" aria-label="Etapas da compra">
+      <span data-checkout-progress="1" class="active"><b>1</b><small>Contato</small></span>
+      <i></i>
+      <span data-checkout-progress="2"><b>2</b><small>Dados</small></span>
+      <i></i>
+      <span data-checkout-progress="3"><b>3</b><small>Entrega</small></span>
+    </div>
+
+    <section class="checkout-step active" data-checkout-step="1">
+      <p class="checkout-kicker">Vamos começar pelo seu contato</p>
+      <form id="checkoutEmailForm" class="checkout-form">
+        <label>E-mail
+          <input id="checkoutEmail" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" required>
+        </label>
+        <button class="button checkout-next" type="submit">Continuar <span>↗</span></button>
+      </form>
+    </section>
+
+    <section class="checkout-step" data-checkout-step="2">
+      <p class="checkout-kicker">Quem está fazendo a compra?</p>
+      <form id="checkoutCustomerForm" class="checkout-form">
+        <div class="checkout-fields two">
+          <label>Nome completo
+            <input id="checkoutName" autocomplete="name" placeholder="Nome e sobrenome" required>
+          </label>
+          <label>WhatsApp
+            <input id="checkoutPhone" inputmode="tel" autocomplete="tel" placeholder="(51) 99999-9999" required>
+          </label>
+        </div>
+        <label>CPF
+          <input id="checkoutCpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="14" required>
+        </label>
+        <div class="checkout-actions">
+          <button class="checkout-back" type="button" data-checkout-back="1">Voltar</button>
+          <button class="button checkout-next" type="submit">Continuar <span>↗</span></button>
+        </div>
+      </form>
+    </section>
+
+    <section class="checkout-step" data-checkout-step="3">
+      <p class="checkout-kicker">Onde você quer receber?</p>
+      <form id="checkoutAddressForm" class="checkout-form">
+        <div class="checkout-fields two">
+          <label>CEP
+            <input id="checkoutCep" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" maxlength="9" required>
+          </label>
+          <label>Número
+            <input id="checkoutNumber" autocomplete="address-line2" placeholder="123" required>
+          </label>
+        </div>
+        <label>Rua / Avenida
+          <input id="checkoutStreet" autocomplete="address-line1" placeholder="Nome da rua" required>
+        </label>
+        <div class="checkout-fields two">
+          <label>Bairro
+            <input id="checkoutDistrict" autocomplete="address-level3" placeholder="Bairro" required>
+          </label>
+          <label>Cidade
+            <input id="checkoutCity" autocomplete="address-level2" placeholder="Cidade" required>
+          </label>
+        </div>
+        <div class="checkout-fields two">
+          <label>Estado
+            <input id="checkoutState" autocomplete="address-level1" placeholder="RS" maxlength="2" required>
+          </label>
+          <label>Complemento
+            <input id="checkoutComplement" autocomplete="address-line2" placeholder="Apto, bloco...">
+          </label>
+        </div>
+        <div class="checkout-order-summary">
+          <div><span>Produtos</span><strong id="checkoutSummaryCount"></strong></div>
+          <div><span>Total dos produtos</span><strong id="checkoutSummaryTotal"></strong></div>
+          <small>Frete e pagamento serão conectados na próxima etapa da loja.</small>
+        </div>
+        <div class="checkout-actions">
+          <button class="checkout-back" type="button" data-checkout-back="2">Voltar</button>
+          <button class="button checkout-next" type="submit">Revisar pedido <span>↗</span></button>
+        </div>
+        <p id="checkoutFlowMessage" class="checkout-message" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+</dialog>
 <button id="floatingCart" class="floating-cart" type="button" aria-label="Abrir sacola, 0 produtos" hidden>
   <span class="floating-cart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 8V6a5 5 0 0 1 10 0v2m2 0H5l1 12h12l1-12Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span>
   <span class="floating-cart-copy"><strong>Minha sacola</strong><small id="floatingCartText">0 produtos</small></span>

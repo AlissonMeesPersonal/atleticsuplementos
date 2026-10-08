@@ -248,7 +248,22 @@
     save('atletic.cart.v2',cart);save('atletic.coupon.v2',activeCoupon);
     const items=Object.keys(cart).map(cartProduct).filter(Boolean);const count=items.reduce((sum,p)=>sum+cart[p.id],0);const subtotal=items.reduce((sum,p)=>sum+p.price*cart[p.id],0);const coupon=couponRecord();let discount=0;
     if(coupon&&subtotal>=Number(coupon.minimum||0))discount=coupon.kind==='fixed'?Math.min(Number(coupon.amount),subtotal):Math.round(subtotal*Number(coupon.amount)/100);
-    $('#count').textContent=count;$('#drawerCount').textContent=`(${count})`;if($('#mobileCount'))$('#mobileCount').textContent=count;
+    $('#count').textContent=count;
+    $('#drawerCount').textContent=`(${count})`;
+    if($('#mobileCount'))$('#mobileCount').textContent=count;
+    if($('#floatingCartCount'))$('#floatingCartCount').textContent=count;
+    if($('#floatingCartText'))$('#floatingCartText').textContent=`${count} ${count===1?'produto':'produtos'}`;
+    const cartOpen=$('#cartOpen');
+    if(cartOpen)cartOpen.setAttribute('aria-label',`Abrir sacola, ${count} ${count===1?'produto':'produtos'}`);
+    const mobileCart=$('#mobileCart');
+    if(mobileCart)mobileCart.setAttribute('aria-label',`Sacola, ${count} ${count===1?'produto':'produtos'}`);
+    const floatingCart=$('#floatingCart');
+    if(floatingCart){
+      floatingCart.hidden=count===0;
+      floatingCart.setAttribute('aria-label',`Abrir sacola, ${count} ${count===1?'produto':'produtos'}`);
+      floatingCart.classList.remove('cart-pop');
+      if(count>0)requestAnimationFrame(()=>floatingCart.classList.add('cart-pop'));
+    }
     $('#cartItems').innerHTML=items.length?items.map(p=>`<div class="cart-line"><div class="mini" aria-hidden="true">${p.image?`<img src="${escape(transparentProductImage(p.image))}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;background:transparent">`:bottle(p)}</div><div><h3>${escape(p.name)}</h3><p>${escape(p.detail)}</p><div class="qty"><button data-qty="${p.id}" data-change="-1" aria-label="Diminuir ${escape(p.name)}">−</button><span>${cart[p.id]}</span><button data-qty="${p.id}" data-change="1" aria-label="Aumentar ${escape(p.name)}">+</button></div></div><div><strong>${money(p.price*cart[p.id])}</strong><br><button class="remove" data-remove="${p.id}">Remover</button></div></div>`).join(''):'<p class="empty-cart">Sua sacola está esperando suas escolhas.<br>Explore o catálogo e adicione seus essenciais.</p>';
     $('#subtotal').textContent=money(subtotal);$('#discount').textContent='− '+money(discount);$('#total').textContent=money(subtotal-discount);$('#checkout').disabled=!count;$('#removeCoupon').hidden=!coupon;
     $('#couponMessage').textContent=coupon?`${coupon.code} aplicado${subtotal<Number(coupon.minimum||0)?` — mínimo ${money(coupon.minimum)} ainda não atingido.`:'.'}`:'Digite um cupom válido cadastrado pela loja.';$('#checkoutMessage').textContent='';
@@ -278,6 +293,7 @@
     setTimeout(()=>$('#search').focus(),280);
   };
   if($('#mobileCart'))$('#mobileCart').onclick=()=>$('#cartOpen').click();
+  if($('#floatingCart'))$('#floatingCart').onclick=()=>$('#cartOpen').click();
 
   window.addEventListener('resize',()=>{
     if(window.innerWidth>700)setMobileMenu(false);

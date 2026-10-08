@@ -9,11 +9,11 @@
   </script>
   <title>Gestão | Atletic Suplementos</title>
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="admin.css?v=20261008-1130">
   <script defer src="store-config.js"></script>
   <script defer src="store-data.js"></script>
   <script defer src="admin-auth.js"></script>
-  <script defer src="admin.js"></script>
+  <script defer src="admin.js?v=20261008-1130></script>
 </head>
 <body>
   <div class="admin-shell">
@@ -37,6 +37,16 @@
     <form id="editForm">
       <div class="drawer-head"><h2 id="editTitle">Cadastro</h2><button type="button" id="closeEditor" aria-label="Fechar">×</button></div>
       <div id="fields"></div>
+      <section id="variantEditor" class="variant-editor" hidden>
+        <div class="variant-editor-head">
+          <div>
+            <strong>Sabores / variações</strong>
+            <small>Cadastre cada sabor no mesmo produto. Cada variação terá imagem, SKU, preço e estoque independentes.</small>
+          </div>
+          <button type="button" id="addVariant" class="button secondary">+ Adicionar sabor</button>
+        </div>
+        <div id="variantRows" class="variant-rows"></div>
+      </section>
       <section id="imageSearchBox" class="image-search" hidden>
         <div class="image-search-head">
           <div><strong>Imagem do produto</strong><small>Primeiro procuramos na biblioteca da Atletic. Se não encontrar, busque na internet.</small></div>

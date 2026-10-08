@@ -467,4 +467,146 @@
 
     $('#pfAddressForm').addEventListener('submit', event => {
       event.preventDefault();
-      const required = ['pfCep', 'pfNumber', 'pfStree
+      const required = ['pfCep', 'pfNumber', 'pfStreet', 'pfDistrict', 'pfCity', 'pfState'];
+      for (const id of required) {
+        const input = document.getElementById(id);
+        if (!input.value.trim()) return input.focus();
+      }
+      if (digits($('#pfCep').value).length !== 8) return $('#pfCep').focus();
+      if ($('#pfState').value.trim().length !== 2) return $('#pfState').focus();
+
+      document.querySelectorAll('[data-pf-field]').forEach(input => {
+        draft[input.dataset.pfField] = input.value.trim();
+      });
+      const summary = totals();
+      draft.cart = cart();
+      draft.total = summary.total;
+      draft.updatedAt = new Date().toISOString();
+      save(DRAFT_KEY, draft);
+      renderReview();
+      showStep(4);
+    });
+
+    $('#pfPaymentNext').addEventListener('click', () => {
+      $('#pfCheckoutMessage').textContent = 'Pedido preparado. Agora falta conectar o meio de pagamento para concluir a compra.';
+    });
+  }
+
+  function prefillCheckout() {
+    document.querySelectorAll('[data-pf-field]').forEach(input => {
+      const key = input.dataset.pfField;
+      if (draft[key] != null) input.value = draft[key];
+    });
+  }
+
+  function showStep(step) {
+    document.querySelectorAll('[data-pf-step]').forEach(section => {
+      section.classList.toggle('active', Number(section.dataset.pfStep) === step);
+    });
+
+    document.querySelectorAll('[data-pf-progress]').forEach(item => {
+      const number = Number(item.dataset.pfProgress);
+      item.classList.toggle('active', number === Math.min(step, 3));
+      item.classList.toggle('done', number < Math.min(step, 4));
+    });
+
+    const firstInput = document.querySelector(`[data-pf-step="${step}"] input`);
+    if (firstInput) setTimeout(() => firstInput.focus(), 60);
+  }
+
+  function renderReview() {
+    const summary = totals();
+    $('#pfReviewItems').innerHTML = summary.items.map(({ product, qty }) => `
+      <div class="pf-review-item">
+        <div>
+          <strong>${product.name}</strong>
+          <small>${product.detail || product.sku || ''}</small>
+        </div>
+        <span>${qty}×</span>
+        <b>${money(product.price * qty)}</b>
+      </div>
+    `).join('');
+
+    $('#pfReviewSubtotal').textContent = money(summary.subtotal);
+    $('#pfReviewDiscount').textContent = summary.discount ? `− ${money(summary.discount)}` : money(0);
+    $('#pfReviewTotal').textContent = money(summary.total);
+    $('#pfReviewAddress').textContent = [
+      draft.street,
+      draft.number,
+      draft.complement,
+      draft.district,
+      `${draft.city || ''}/${draft.state || ''}`,
+      draft.cep
+    ].filter(Boolean).join(' · ');
+  }
+
+  function openCheckout() {
+    ensureCheckout();
+    const summary = totals();
+    if (!summary.count) return;
+
+    prefillCheckout();
+    showStep(draft.email ? 2 : 1);
+
+    const cartDialog = $('#cart');
+    if (cartDialog?.open) cartDialog.close();
+
+    const dialog = $('#checkoutFlow');
+    if (!dialog.open) dialog.showModal();
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeCheckout() {
+    const dialog = $('#checkoutFlow');
+    if (dialog?.open) dialog.close();
+    document.body.style.overflow = '';
+  }
+
+  function init() {
+    ensureProductTools();
+    ensureCartShipping();
+    ensureCheckout();
+
+    const productDialog = $('#productView');
+    if (productDialog) {
+      new MutationObserver(() => {
+        if (productDialog.open) refreshProductTools();
+      }).observe(productDialog, { attributes: true, attributeFilter: ['open'] });
+    }
+
+    document.addEventListener('click', event => {
+      if (event.target.closest('[data-view]')) setTimeout(refreshProductTools, 0);
+
+      const variantButton = event.target.closest('[data-pf-variant]');
+      if (variantButton) applyVariant(variantButton.dataset.pfVariant);
+    });
+
+    $('#productQtyMinus')?.addEventListener('click', () => setQty(selectedQty - 1));
+    $('#productQtyPlus')?.addEventListener('click', () => setQty(selectedQty + 1));
+
+    $('#productBuyNow')?.addEventListener('click', () => {
+      const add = $('#productViewAdd');
+      if (!add || add.disabled) return;
+      add.dataset.quantity = String(selectedQty);
+      add.click();
+      const dialog = $('#productView');
+      if (dialog?.open) dialog.close();
+      setTimeout(() => $('#cartOpen')?.click(), 80);
+    });
+
+    const checkout = $('#checkout');
+    if (checkout) {
+      checkout.textContent = 'Finalizar compra ↗';
+      checkout.onclick = event => {
+        event.preventDefault();
+        openCheckout();
+      };
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+})();

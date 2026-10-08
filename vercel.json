@@ -60,6 +60,14 @@
     {
       "source": "/purchase-flow.css",
       "destination": "/dist/purchase-flow.css"
+    },
+    {
+      "source": "/customer-account.js",
+      "destination": "/dist/customer-account.js"
+    },
+    {
+      "source": "/customer-account.css",
+      "destination": "/dist/customer-account.css"
     }
   ],
   "headers": [

@@ -17,6 +17,12 @@ function nearWhite(r, g, b) {
   return min >= 228 && (max - min) <= 24;
 }
 
+function nearWhiteStrict(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return min >= 248 && (max - min) <= 8;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -53,7 +59,10 @@ export default async function handler(req, res) {
       if (index < 0 || index >= width * height || visited[index]) return;
       const offset = index * channels;
       const alpha = data[offset + 3];
-      const background = alpha === 0 || nearWhite(data[offset], data[offset + 1], data[offset + 2]);
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+      const background = alpha === 0 || (whiteOnly ? nearWhiteStrict(r, g, b) : nearWhite(r, g, b));
       if (!background) return;
       visited[index] = 1;
       queue[tail++] = index;

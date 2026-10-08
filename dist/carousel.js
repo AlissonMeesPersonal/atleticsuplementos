@@ -7,8 +7,8 @@
     if(!safe)return'';
     try{
       const url=new URL(safe,location.href);
-      if(url.hostname==='cdn.awsli.com.br')return `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=10`;
-      return safe;
+      if(url.origin===location.origin)return safe;
+      return `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=12`;
     }catch{return safe}
   };
   const whatsappUrl=(number,message)=>{const digits=String(number||'').replace(/\D/g,'');return /^[1-9]\d{9,14}$/.test(digits)?`https://wa.me/${digits}?text=${encodeURIComponent(message||'')}`:''};
@@ -45,7 +45,7 @@
               try{
                 const url=new URL(safe,location.href);
                 return url.hostname==='cdn.awsli.com.br'
-                  ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=10`
+                  ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=12`
                   : safe;
               }catch{return safe}
             })(),

@@ -39,7 +39,16 @@
           .map(item=>({
             name:item.title||'Produto Atletic',
             brand:item.brand||item.category||'Atletic',
-            image:safeImage(item.image_url),
+            image:(()=>{
+              const safe=safeImage(item.image_url);
+              if(!safe)return'';
+              try{
+                const url=new URL(safe,location.href);
+                return url.hostname==='cdn.awsli.com.br'
+                  ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=8`
+                  : safe;
+              }catch{return safe}
+            })(),
             original:true
           }));
       }

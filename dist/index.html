@@ -2,13 +2,15 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#121212">
   <script>
     (()=>{try{const raw=localStorage.getItem('atletic.theme');let theme=raw;try{theme=JSON.parse(raw)}catch{}if(theme!=='light')document.documentElement.classList.add('theme-dark')}catch{document.documentElement.classList.add('theme-dark')}})();
   </script>
   <meta name="description" content="Atletic Suplementos. Encontre seu próximo passo nos treinos.">
   <title>Atletic Suplementos | Seu próximo nível</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <script defer src="store-config.js"></script>
   <script defer src="store-data.js"></script>
@@ -17,8 +19,8 @@
 </head>
 <body>
 <div class="announcement">SEU TREINO. SUA ROTINA. SEU PRÓXIMO NÍVEL. <span>ATLETIC SUPLEMENTOS ↗</span></div>
-<header><a href="#" aria-label="Atletic início"><img class="logo" src="assets/logo.svg" alt="Atletic Suplementos"></a><form id="searchForm" class="search"><input id="search" type="search" placeholder="O que acompanha seu treino?" aria-label="Buscar suplementos"><button aria-label="Pesquisar">⌕</button></form><div class="actions"><button id="theme" aria-label="Alternar tema" title="Alternar tema">◐</button><button id="cartOpen" aria-label="Abrir carrinho">Sacola <b id="count">0</b></button></div></header>
-<nav aria-label="Categorias"><a href="#catalog" data-category="Todos">Todos os produtos</a><a href="#catalog" data-category="Proteínas">Proteínas</a><a href="#catalog" data-category="Creatinas">Creatinas</a><a href="#catalog" data-category="Pré-treinos">Pré-treinos</a><a href="#catalog" data-category="Vitaminas">Vitaminas</a><a href="#catalog" data-category="Acessórios">Acessórios</a><a class="nav-special" href="#combos">Monte sua rotina ↗</a></nav>
+<header class="site-header"><a class="brand-link" href="#" aria-label="Atletic início"><img class="logo" src="assets/logo.svg" alt="Atletic Suplementos"></a><form id="searchForm" class="search"><input id="search" type="search" placeholder="O que acompanha seu treino?" aria-label="Buscar suplementos"><button aria-label="Pesquisar">⌕</button></form><div class="actions"><button id="theme" aria-label="Alternar tema" title="Alternar tema">◐</button><button id="cartOpen" aria-label="Abrir carrinho">Sacola <b id="count">0</b></button><button id="menuToggle" class="menu-toggle" aria-label="Abrir menu" aria-controls="mainNav" aria-expanded="false"><span aria-hidden="true">☰</span></button></div></header>
+<nav id="mainNav" class="main-nav" aria-label="Categorias"><div class="mobile-nav-head"><img class="mobile-nav-logo" src="assets/logo.svg" alt=""><button id="navClose" aria-label="Fechar menu">×</button></div><a href="#catalog" data-category="Todos">Todos os produtos</a><a href="#catalog" data-category="Proteínas">Proteínas</a><a href="#catalog" data-category="Creatinas">Creatinas</a><a href="#catalog" data-category="Pré-treinos">Pré-treinos</a><a href="#catalog" data-category="Vitaminas">Vitaminas</a><a href="#catalog" data-category="Acessórios">Acessórios</a><a class="nav-special" href="#combos">Monte sua rotina ↗</a></nav><div id="navBackdrop" class="nav-backdrop" hidden></div>
 <main>
 <section class="hero-carousel" aria-label="Campanhas e parceiros" aria-roledescription="carrossel"><div class="hero-slide" role="group" aria-roledescription="slide"><section class="hero"><div class="hero-copy"><p class="eyebrow">ATITUDE PARA IR ALÉM.</p><h1>SEU PRÓXIMO<br>NÍVEL <em>COMEÇA<br>AQUI.</em></h1><p>Do primeiro treino à próxima conquista.<br>Encontre os suplementos para sua rotina.</p><a class="button" href="#catalog">Explorar produtos <span>↗</span></a><div class="hero-caption"><span class="line"></span><span>FORÇA NA SUA ESCOLHA</span></div></div><div class="hero-art" aria-label="Ilustração de embalagens demonstrativas Atletic"><span class="outline-word">ATLETIC</span><div class="orbit"></div><div class="bottle hero-small"><div class="lid"></div><div class="label"><small>ATLETIC</small><strong>CREA<br>TINE.</strong><span>MONOHIDRATADA</span><b>300g</b></div></div><div class="bottle hero-big"><div class="lid"></div><div class="label"><small>ATLETIC</small><strong>WHEY<br>PROTEIN.</strong><span>ROTINA EM MOVIMENTO</span><b>900g</b></div></div><span class="art-note">EMBALAGENS ILUSTRATIVAS</span><div class="round-stamp">SEU FOCO.<br><b>SUA EVOLUÇÃO.</b>↗</div></div></section></div><div id="extraSlides"></div><div class="carousel-controls"><button id="slidePrev" aria-label="Banner anterior">←</button><div id="slideDots" class="slide-dots"></div><button id="slideNext" aria-label="Próximo banner">→</button><button id="slidePause" aria-label="Pausar troca automática">Pausar</button><span id="slideCounter" aria-live="off">01 / 01</span></div><span id="slideStatus" class="sr-only" aria-live="polite"></span></section>
 <div class="ticker"><span>CONSTÂNCIA É TUDO</span> ✦ <span>VÁ NO SEU RITMO</span> ✦ <span>ESCOLHA ATLETIC</span> ✦ <span>CONSTÂNCIA É TUDO</span> ✦ <span>VÁ NO SEU RITMO</span></div>
@@ -29,6 +31,12 @@
 </main>
 <footer><img class="logo" src="assets/logo.svg" alt="Atletic Suplementos"><p>Seu próximo nível começa com você.</p><a href="#catalog">Explorar catálogo ↗</a><div class="footer-bottom">© <span id="year"></span> Atletic Suplementos.<span>Prévia de desenvolvimento · checkout real ainda não habilitado</span></div></footer>
 <dialog id="cart"><div class="drawer-head"><div><p class="eyebrow">SUAS ESCOLHAS</p><h2>Minha sacola <span id="drawerCount">0</span></h2></div><button id="cartClose" aria-label="Fechar carrinho">×</button></div><div id="cartItems"></div><div class="cart-bottom"><form id="couponForm"><label for="coupon">Tem um cupom?</label><div class="coupon-row"><input id="coupon" placeholder="Digite seu cupom" maxlength="30"><button class="button">Aplicar</button></div></form><p id="couponMessage" aria-live="polite">Digite um cupom válido cadastrado pela loja.</p><div class="total-row"><span>Subtotal</span><strong id="subtotal"></strong></div><div class="total-row"><span>Desconto <button id="removeCoupon" hidden aria-label="Remover cupom">×</button></span><strong id="discount"></strong></div><div class="total-row"><span>Entrega</span><span>A definir no checkout</span></div><div class="total-row grand"><span>Total dos produtos</span><strong id="total"></strong></div><button id="checkout" class="button checkout">Continuar compra ↗</button><p class="demo-note">Nenhum pedido ou cobrança será realizado nesta etapa.</p><p id="checkoutMessage" role="status"></p></div></dialog>
+<nav class="mobile-bottom-nav" aria-label="Navegação rápida">
+  <a href="#" aria-label="Início"><span aria-hidden="true">⌂</span><small>Início</small></a>
+  <a href="#catalog" aria-label="Produtos"><span aria-hidden="true">▦</span><small>Produtos</small></a>
+  <button id="mobileSearch" type="button" aria-label="Buscar"><span aria-hidden="true">⌕</span><small>Buscar</small></button>
+  <button id="mobileCart" type="button" aria-label="Sacola"><span aria-hidden="true">◫</span><small>Sacola</small><b id="mobileCount">0</b></button>
+</nav>
 <div id="toast" role="status"></div>
 </body>
 </html>

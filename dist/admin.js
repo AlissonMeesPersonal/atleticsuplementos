@@ -501,13 +501,23 @@
       .filter(variant=>variant.active&&String(variant.sku||'').trim())
       .map(variant=>{
         const product=data.products.find(item=>item.id===variant.productId);
+        const image=variant.image||product?.images?.[0]?.url||'';
+        let absoluteImage=image;
+        try{absoluteImage=image?new URL(image,location.origin).href:''}catch{}
         return {
+          productKey:variant.productId,
           sku:String(variant.sku||'').trim(),
           name:product?.name||variantLabel(variant.id),
+          brand:brandName(product?.brandId),
+          category:categoryName(product?.categoryId),
+          description:String(product?.description||'').trim(),
+          imageUrl:absoluteImage,
           flavor:String(variant.flavor||'').trim(),
           size:String(variant.size||'').trim(),
           barcode:String(variant.barcode||'').trim(),
           price:Number(variant.price||0),
+          cost:Number(variant.cost||0),
+          minStock:Number(variant.minStock||0),
           stock:balance(variant.id)
         };
       });
@@ -548,6 +558,7 @@
       const disabled=!payload.configured;
       if($('#olistTest'))$('#olistTest').disabled=disabled;
       if($('#olistMatch'))$('#olistMatch').disabled=disabled;
+      if($('#olistCreate'))$('#olistCreate').disabled=disabled;
     }catch(error){
       target.innerHTML=`<p class="integration-error">${esc(error.message)}</p>`;
     }
@@ -615,6 +626,56 @@
     }
   }
 
+  async function createMissingOlistCatalog() {
+    const button=$('#olistCreate');
+    const output=$('#olistOutput');
+    if(!button||!output)return;
+
+    const items=olistCatalogItems();
+    if(!items.length){
+      output.className='integration-output error';
+      output.textContent='Nenhuma variação ativa com SKU para cadastrar.';
+      return;
+    }
+
+    const origin=$('#olistOrigin')?.value||'';
+    const unit=$('#olistUnit')?.value||'UN';
+    if(!origin){
+      output.className='integration-output error';
+      output.textContent='Selecione a origem fiscal.';
+      return;
+    }
+
+    const products=new Set(items.map(item=>item.productKey||item.name));
+    if(!confirm(`Cadastrar na Olist até ${products.size} produto(s), agrupando ${items.length} sabor(es)/SKU(s)?\n\nOrigem fiscal: ${origin}\nUnidade: ${unit}\n\nO sistema verifica cada SKU antes de criar para evitar duplicidades.`))return;
+
+    button.disabled=true;
+    button.textContent='Cadastrando…';
+    output.className='integration-output';
+    output.textContent='Validando SKUs e criando os produtos ausentes na Olist…';
+
+    try{
+      const response=await fetch('/api/olist-erp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+        body:JSON.stringify({action:'create_missing_catalog',items,origin,unit})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||'Falha ao cadastrar produtos na Olist.');
+      const summary=payload.summary||{};
+      const failures=(payload.results||[]).filter(item=>item.status==='error'||item.status==='partial_existing');
+      output.className=summary.errors||summary.partial?'integration-output error':'integration-output success';
+      output.textContent=`${summary.createdProducts||0} produto(s) criado(s) · ${summary.createdVariants||0} sabor(es) cadastrados · ${summary.alreadyExists||0} já existentes · ${summary.partial||0} parcialmente existentes · ${summary.errors||0} erro(s).${failures.length?' '+failures.slice(0,2).map(item=>item.message).filter(Boolean).join(' · '):''}`;
+      await loadOlistStatus();
+    }catch(error){
+      output.className='integration-output error';
+      output.textContent=error.message;
+    }finally{
+      button.disabled=false;
+      button.textContent='Cadastrar produtos ausentes';
+    }
+  }
+
   function renderIntegrations() {
     $('#adminContent').innerHTML=`
       <div class="integration-page">
@@ -628,9 +689,29 @@
             </div>
           </div>
           <div id="olistStatus" class="integration-status"><p class="muted">Verificando configuração…</p></div>
+          <div class="integration-fiscal">
+            <label>Origem fiscal padrão
+              <select id="olistOrigin">
+                <option value="0">0 — Nacional</option>
+                <option value="1">1 — Estrangeira, importação direta</option>
+                <option value="2">2 — Estrangeira, adquirida no mercado interno</option>
+                <option value="3">3 — Nacional com conteúdo de importação &gt; 40% e ≤ 70%</option>
+                <option value="4">4 — Nacional conforme processos produtivos básicos</option>
+                <option value="5">5 — Nacional com conteúdo de importação ≤ 40%</option>
+                <option value="6">6 — Estrangeira, importação direta sem similar nacional</option>
+                <option value="7">7 — Estrangeira, adquirida no mercado interno sem similar nacional</option>
+                <option value="8">8 — Nacional com conteúdo de importação &gt; 70%</option>
+              </select>
+            </label>
+            <label>Unidade
+              <select id="olistUnit"><option value="UN">UN — Unidade</option></select>
+            </label>
+            <p>Revise a origem fiscal antes do primeiro cadastro. A Olist exige esse campo para incluir produtos.</p>
+          </div>
           <div class="integration-actions">
             <button id="olistTest" class="button" disabled>Testar conexão</button>
             <button id="olistMatch" class="button secondary" disabled>Mapear catálogo por SKU</button>
+            <button id="olistCreate" class="button secondary" disabled>Cadastrar produtos ausentes</button>
           </div>
           <p id="olistOutput" class="integration-output" role="status"></p>
         </section>
@@ -656,6 +737,7 @@
     `;
     $('#olistTest').onclick=testOlistConnection;
     $('#olistMatch').onclick=matchOlistCatalog;
+    $('#olistCreate').onclick=createMissingOlistCatalog;
     loadOlistStatus();
   }
 

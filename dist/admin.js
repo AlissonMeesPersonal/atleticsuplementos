@@ -202,8 +202,19 @@
     let head = [];
     let body = '';
     if (page === 'products') {
-      head = ['Produto','Marca / categoria','SKU / variação','Preço','Estoque','Status','Ações'];
-      body = rows.map(p => { const v=activeVariant(p.id); const qty=v?balance(v.id):0; const low=v&&qty<=Number(v.minStock||0); return `<tr><td><div class="product-cell">${imageFor(p)?`<img class="product-thumb" src="${esc(imageFor(p))}" alt="">`:'<span class="product-thumb"></span>'}<div><strong>${esc(p.name)}</strong><br><small>${esc(p.description||'')}</small></div></div></td><td>${esc(brandName(p.brandId))}<br><small>${esc(categoryName(p.categoryId))}</small></td><td>${esc(v?.sku||'—')}<br><small>${esc([v?.size,v?.flavor].filter(Boolean).join(' · ')||'Sem variação')}</small></td><td>${v?money(v.price):'—'}${v?.comparePrice?`<br><small>de ${money(v.comparePrice)}</small>`:''}</td><td class="${low?'stock-low':'stock-ok'}">${qty}${v?` / mín. ${v.minStock||0}`:''}</td><td><span class="badge">${p.active?'Ativo':'Inativo'}</span></td><td><button data-edit="${p.id}">Editar</button><button data-delete="${p.id}">Excluir</button></td></tr>`; }).join('');
+      head = ['Produto','Marca / categoria','Sabores / variações','Preço','Estoque total','Status','Ações'];
+      body = rows.map(p => {
+        const vars=productVariants(p.id);
+        const activeVars=vars.filter(v=>v.active);
+        const qty=activeVars.reduce((sum,v)=>sum+Math.max(0,balance(v.id)),0);
+        const prices=activeVars.map(v=>Number(v.price||0)).filter(Boolean);
+        const minPrice=prices.length?Math.min(...prices):0;
+        const maxPrice=prices.length?Math.max(...prices):0;
+        const low=activeVars.some(v=>balance(v.id)<=Number(v.minStock||0));
+        const flavors=activeVars.map(v=>v.flavor||v.size||'Padrão').slice(0,3);
+        const flavorText=flavors.join(' · ')+(activeVars.length>3?` +${activeVars.length-3}`:'');
+        return `<tr><td><div class="product-cell">${imageFor(p)?`<img class="product-thumb" src="${esc(imageFor(p))}" alt="">`:'<span class="product-thumb"></span>'}<div><strong>${esc(p.name)}</strong><br><small>${esc(p.description||'')}</small></div></div></td><td>${esc(brandName(p.brandId))}<br><small>${esc(categoryName(p.categoryId))}</small></td><td><strong>${activeVars.length} ${activeVars.length===1?'variação':'variações'}</strong><br><small>${esc(flavorText||'Sem variação ativa')}</small></td><td>${minPrice?money(minPrice):'—'}${maxPrice>minPrice?`<br><small>até ${money(maxPrice)}</small>`:''}</td><td class="${low?'stock-low':'stock-ok'}">${qty}<br><small>saldo somado dos sabores</small></td><td><span class="badge">${p.active?'Ativo':'Inativo'}</span></td><td><button data-edit="${p.id}">Editar</button><button data-delete="${p.id}">Excluir</button></td></tr>`;
+      }).join('');
     } else if (page === 'categories') {
       head=['Categoria','Slug','Status','Ações']; body=rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.slug)}</td><td><span class="badge">${r.active?'Ativa':'Inativa'}</span></td><td><button data-edit="${r.id}">Editar</button><button data-delete="${r.id}">Excluir</button></td></tr>`).join('');
     } else if (page === 'brands') {

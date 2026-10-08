@@ -24,6 +24,8 @@ export default async function handler(req, res) {
   }
 
   const source = String(req.query?.url || '');
+  const mode = String(req.query?.mode || '').trim();
+  const whiteOnly = mode === 'white-only';
   if (!isAllowedImage(source)) return res.status(400).send('Imagem não permitida.');
 
   try {
@@ -77,6 +79,16 @@ export default async function handler(req, res) {
       if (x + 1 < width) pushIfBackground(index + 1);
       if (y > 0) pushIfBackground(index - width);
       if (y + 1 < height) pushIfBackground(index + width);
+    }
+
+    if (whiteOnly) {
+      const output = await sharp(data, { raw: { width, height, channels } })
+        .png({ compressionLevel: 9, adaptiveFiltering: true })
+        .toBuffer();
+
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000');
+      return res.status(200).send(output);
     }
 
     // Mantém o produto principal e partes relevantes próximas dele.

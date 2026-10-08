@@ -115,3 +115,46 @@
   .variant-image-row{grid-template-columns:1fr}
   .variant-row-head{align-items:flex-start}
 }
+
+/* Olist ERP integration */
+.integration-page{display:grid;gap:18px}
+.integration-hero{display:grid;gap:20px}
+.integration-brand{display:flex;align-items:center;gap:16px}
+.integration-logo{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;background:var(--orange);color:#151515;font:900 26px/1 Arial}
+.integration-brand h2{font-size:26px;margin:3px 0 6px}
+.integration-status{display:grid;gap:14px}
+.integration-status-line{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}
+.integration-status-line>div{display:grid;gap:4px}
+.integration-status-line strong{font-size:12px}
+.integration-status-line small{font-size:10px;color:var(--muted);line-height:1.5}
+.integration-dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
+.integration-dot.ready{background:#59b66f;box-shadow:0 0 0 5px #59b66f18}
+.integration-dot.waiting{background:#d39c3a;box-shadow:0 0 0 5px #d39c3a18}
+.integration-account{display:grid;gap:4px;padding:13px 14px;border-left:3px solid var(--orange);background:var(--card);border-radius:0 8px 8px 0}
+.integration-account small{font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+.integration-account strong{font-size:13px}
+.integration-account span{font-size:10px;color:var(--muted)}
+.integration-chips{gap:7px;flex-wrap:wrap}
+.integration-actions{display:flex;gap:10px;flex-wrap:wrap}
+.integration-actions .button{min-height:42px}
+.integration-output{min-height:18px;font-size:11px;line-height:1.5;color:var(--muted)}
+.integration-output.success{color:#59b66f}
+.integration-output.error,.integration-error{color:#d65f4b}
+.integration-grid{align-items:start}
+.integration-steps{display:grid;gap:14px;list-style:none;padding:0!important;margin:16px 0 0!important}
+.integration-steps li{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:start}
+.integration-steps li>b{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--orange);color:#151515;font-size:10px}
+.integration-steps li>div{display:grid;gap:4px}
+.integration-steps strong{font-size:12px}
+.integration-steps span{font-size:10px;line-height:1.5;color:var(--muted)}
+.integration-secret-note{display:grid;gap:7px;margin:16px 0;padding:14px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}
+.integration-secret-note strong{font-size:11px}
+.integration-secret-note span{font-size:10px;line-height:1.55;color:var(--muted)}
+.integration-secret-note code{font-size:10px;color:var(--orange)}
+.integration-version-note{margin-top:14px!important}
+@media(max-width:700px){
+  .integration-brand{align-items:flex-start}
+  .integration-logo{width:46px;height:46px;border-radius:12px;font-size:22px}
+  .integration-actions{display:grid}
+  .integration-actions .button{width:100%}
+}

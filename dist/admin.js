@@ -603,8 +603,9 @@
       const payload=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(payload.error||'Falha ao mapear catálogo.');
       const summary=payload.summary||{};
-      output.className='integration-output success';
-      output.textContent=`${summary.matched||0} SKU(s) vinculados · ${summary.notFound||0} ainda não encontrados no ERP · ${summary.errors||0} erro(s).`;
+      const errors=(payload.results||[]).filter(item=>item.status==='error');
+      output.className=summary.errors?'integration-output error':'integration-output success';
+      output.textContent=`${summary.matched||0} SKU(s) vinculados · ${summary.notFound||0} ainda não encontrados no ERP · ${summary.errors||0} erro(s).${errors.length?' '+errors.slice(0,2).map(item=>item.message).filter(Boolean).join(' · '):''}`;
     }catch(error){
       output.className='integration-output error';
       output.textContent=error.message;

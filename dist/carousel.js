@@ -2,13 +2,21 @@
   const root=document.querySelector('.hero-carousel');if(!root)return;
   const escape=value=>String(value||'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const safeImage=value=>{if(!value)return'';try{const url=new URL(value,location.href);return url.protocol==='https:'||url.origin===location.origin?url.href:''}catch{return''}};
+  const manualProductAssets=new Map([["93289184","/assets/products/01_100_Whey_Concentrate_840g_Evolve.png"],["353752094","/assets/products/02_Barra_de_proteina_Crisp_Bar_45g_Sabor_Ovomaltine_Integralmedica.png"],["149937717","/assets/products/03_Colageno_Tipo_II_60_capsulas_Evolve.png"],["229218979","/assets/products/04_Coqueteleira_Transparente_600ml_Integralmedica.png"],["93310863","/assets/products/05_Creatina_300g_Max_Titanium.png"],["93312928","/assets/products/06_Creatina_Hardcore_150g_Integralmedica.png"],["93313624","/assets/products/07_Creatina_Hardcore_300g_Integralmedica.png"],["203243364","/assets/products/08_Creatina_Monohidratada_300g_DUX_Nutrition.png"],["101602454","/assets/products/09_Creatina_Monohidratada_300g_Probiotica.png"],["343299218","/assets/products/10_CREATINA_SHARK_PRO_300G.png"],["129165198","/assets/products/11_Creatine_300g_Black_Skull.png"],["93290466","/assets/products/12_Iso_Whey_Collagen_840g_Evolve.png"],["298700361","/assets/products/13_L_GLUTAMINA_250g_EVOLVE.png"],["214409068","/assets/products/14_Multivitaminico_60_capsulas_Evolve.png"],["92796142","/assets/products/15_Omega_3_1000mg_60_capsulas_Evolve.png"],["231959625","/assets/products/16_Pre_Workout_150g_Evolve.png"],["92775690","/assets/products/17_Vitamina_C_60_capsulas_Evolve.png"],["92809684","/assets/products/18_Vitamina_D_60_capsulas_Evolve.png"],["129166224","/assets/products/19_Whey_100_HD_900g_Black_Skull.png"],["92601117","/assets/products/20_Whey_100_Pure_900g_Integralmedica.png"],["364056309","/assets/products/21_Whey_Grego_Bar_Havanna_Nutrata_Sabor_Doce_de_Leite_com_Morango.png"],["92616996","/assets/products/22_Whey_Protein_Concentrado_900g_DUX_Nutrition.png"],["92618811","/assets/products/23_Whey_Protein_Isolado_900g_DUX_Nutrition.png"]]);
+  const resolveManualAsset=value=>{
+    const raw=String(value||'');
+    for(const [productId,path] of manualProductAssets){if(raw.includes(`/produto/${productId}/`))return path}
+    return raw;
+  };
   const heroImage=value=>{
+    const manual=resolveManualAsset(value);
+    if(manual!==String(value||''))return manual;
     const safe=safeImage(value);
     if(!safe)return'';
     try{
       const url=new URL(safe,location.href);
-      if(url.origin===location.origin)return safe;
-      return `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=12`;
+      if(url.origin===location.origin)return url.pathname+url.search;
+      return `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=13`;
     }catch{return safe}
   };
   const whatsappUrl=(number,message)=>{const digits=String(number||'').replace(/\D/g,'');return /^[1-9]\d{9,14}$/.test(digits)?`https://wa.me/${digits}?text=${encodeURIComponent(message||'')}`:''};

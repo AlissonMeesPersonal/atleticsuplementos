@@ -113,7 +113,18 @@
         );
       }
 
-      const displaySource=selected?.image_url ? safeImage(selected.image_url) : cutoutImage(source);
+      const displaySource=selected?.image_url
+        ? (()=>{
+            const safe=safeImage(selected.image_url);
+            if(!safe)return'';
+            try{
+              const url=new URL(safe,location.href);
+              return url.hostname==='cdn.awsli.com.br'
+                ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=8`
+                : safe;
+            }catch{return safe}
+          })()
+        : cutoutImage(source);
       return `<img class="category-product-image ${selected?.image_url?'original-selected':''}" src="${escape(displaySource)}" alt="" loading="lazy" decoding="async">`;
     };
 

@@ -559,6 +559,7 @@
       if($('#olistTest'))$('#olistTest').disabled=disabled;
       if($('#olistMatch'))$('#olistMatch').disabled=disabled;
       if($('#olistCreate'))$('#olistCreate').disabled=disabled;
+      if($('#olistImport'))$('#olistImport').disabled=disabled;
     }catch(error){
       target.innerHTML=`<p class="integration-error">${esc(error.message)}</p>`;
     }
@@ -676,6 +677,96 @@
     }
   }
 
+  async function olistImportRequest(action,extra={}) {
+    const response=await fetch('/api/olist-import',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+      body:JSON.stringify({action,...extra})
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||'Falha na importação da Olist.');
+    return payload;
+  }
+
+  const importPause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+  async function runOlistImportStage({listAction,importAction,label,listExtra={}}) {
+    let page=1;
+    let totalPages=1;
+    let imported=0;
+    let skipped=0;
+    let errors=0;
+    do{
+      const listing=await olistImportRequest(listAction,{page,...listExtra});
+      totalPages=Math.max(1,Number(listing.totalPages||1));
+      const items=Array.isArray(listing.items)?listing.items:[];
+      for(let index=0;index<items.length;index++){
+        const item=items[index];
+        const output=$('#olistImportOutput');
+        if(output)output.textContent=`${label}: página ${page}/${totalPages} · ${index+1}/${items.length} · ${imported} importados · ${errors} erros`;
+        try{
+          const result=await olistImportRequest(importAction,{id:item.id});
+          if(result?.result?.skipped)skipped++;
+          else imported++;
+        }catch(error){
+          errors++;
+          const errorsBox=$('#olistImportErrors');
+          if(errorsBox&&errorsBox.children.length<8){
+            errorsBox.insertAdjacentHTML('beforeend',`<li>${esc(item.name||item.number||item.id)}: ${esc(error.message)}</li>`);
+          }
+        }
+        await importPause(120);
+      }
+      page++;
+    }while(page<=totalPages);
+    return {label,imported,skipped,errors};
+  }
+
+  async function importExistingOlistData() {
+    const button=$('#olistImport');
+    const output=$('#olistImportOutput');
+    const errorsBox=$('#olistImportErrors');
+    if(!button||!output)return;
+    if(!confirm('Importar os dados existentes da Olist para o novo banco da Atletic?\n\nSerão importados produtos, sabores/variações, imagens, estoque, clientes, endereços e pedidos históricos.\n\nA importação é incremental e pode ser executada novamente sem duplicar os registros vinculados à Olist.'))return;
+
+    button.disabled=true;
+    button.textContent='Importando…';
+    if(errorsBox)errorsBox.innerHTML='';
+    output.className='integration-output';
+    output.textContent='Preparando a migração da Olist…';
+
+    const summaries=[];
+    try{
+      summaries.push(await runOlistImportStage({
+        listAction:'list_products',
+        importAction:'import_product',
+        label:'Produtos / sabores / imagens / estoque'
+      }));
+      summaries.push(await runOlistImportStage({
+        listAction:'list_contacts',
+        importAction:'import_contact',
+        label:'Clientes / endereços'
+      }));
+      summaries.push(await runOlistImportStage({
+        listAction:'list_orders',
+        importAction:'import_order',
+        label:'Pedidos históricos',
+        listExtra:{from:'01/01/2000'}
+      }));
+
+      const counts=await olistImportRequest('counts');
+      const summaryText=summaries.map(s=>`${s.label}: ${s.imported} importados, ${s.skipped} ignorados, ${s.errors} erros`).join(' · ');
+      output.className=summaries.some(s=>s.errors)?'integration-output error':'integration-output success';
+      output.textContent=`Migração concluída. ${summaryText}. Banco: ${counts.counts?.products||0} produtos, ${counts.counts?.product_variants||0} variações, ${counts.counts?.customers||0} clientes e ${counts.counts?.orders||0} pedidos.`;
+    }catch(error){
+      output.className='integration-output error';
+      output.textContent=`Importação interrompida: ${error.message}. Você pode executar novamente; registros já vinculados não serão duplicados.`;
+    }finally{
+      button.disabled=false;
+      button.textContent='Importar dados da loja antiga';
+    }
+  }
+
   function renderIntegrations() {
     $('#adminContent').innerHTML=`
       <div class="integration-page">
@@ -716,6 +807,27 @@
           <p id="olistOutput" class="integration-output" role="status"></p>
         </section>
 
+        <section class="panel olist-migration-panel">
+          <div class="olist-migration-head">
+            <div>
+              <p class="eyebrow">MIGRAÇÃO DA LOJA ANTIGA</p>
+              <h2>Importar tudo que já existe na Olist</h2>
+              <p class="muted">A Olist passa a ser nossa fonte de migração. O processo importa produtos, variações/sabores, imagens, estoque, clientes, endereços e pedidos históricos em lotes, sem exigir recadastro manual.</p>
+            </div>
+            <button id="olistImport" class="button" disabled>Importar dados da loja antiga</button>
+          </div>
+          <div class="integration-chips status-row">
+            <span class="status-chip">Produtos + variações</span>
+            <span class="status-chip">Imagens</span>
+            <span class="status-chip">Estoque</span>
+            <span class="status-chip">Clientes</span>
+            <span class="status-chip">Endereços</span>
+            <span class="status-chip">Pedidos históricos</span>
+          </div>
+          <p id="olistImportOutput" class="integration-output" role="status">A importação é incremental: se for interrompida, pode ser executada novamente.</p>
+          <ul id="olistImportErrors" class="olist-import-errors"></ul>
+        </section>
+
         <div class="admin-grid integration-grid">
           <section class="panel">
             <h2>Fluxo preparado</h2>
@@ -738,6 +850,7 @@
     $('#olistTest').onclick=testOlistConnection;
     $('#olistMatch').onclick=matchOlistCatalog;
     $('#olistCreate').onclick=createMissingOlistCatalog;
+    $('#olistImport').onclick=importExistingOlistData;
     loadOlistStatus();
   }
 

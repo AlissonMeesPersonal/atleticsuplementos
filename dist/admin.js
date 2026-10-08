@@ -558,7 +558,7 @@
     const active = variant.active ?? true;
     const stockLabel = id ? `Saldo atual: ${current}` : 'Novo sabor';
     return `
-      <article class="variant-row" data-variant-id="${esc(id)}">
+      <article class="variant-row" data-variant-id="${esc(id)}" data-auto-sku="${id?'false':'true'}">
         <div class="variant-row-head">
           <div class="variant-row-title">
             <img data-variant-preview src="${esc(image || 'assets/logo.svg')}" alt="">
@@ -635,6 +635,58 @@
     if (title) title.textContent = flavor;
     if (subtitle) subtitle.textContent = [size,sku].filter(Boolean).join(' · ') || 'Defina sabor, tamanho e SKU';
     if (preview) preview.src = image;
+  }
+
+  function usedVariantSkus(exceptRow=null) {
+    const used=new Set(
+      data.variants
+        .map(v=>String(v.sku||'').trim().toUpperCase())
+        .filter(Boolean)
+    );
+    document.querySelectorAll('#variantRows .variant-row').forEach(row=>{
+      if(row===exceptRow)return;
+      const sku=String(row.querySelector('[data-vfield="sku"]')?.value||'').trim().toUpperCase();
+      if(sku)used.add(sku);
+    });
+    return used;
+  }
+
+  function updateAutoVariantSku(row) {
+    if(!row || row.dataset.variantId || row.dataset.autoSku==='false')return;
+    const name=String($('#editForm [name="name"]')?.value||'Produto').trim();
+    const brandId=String($('#editForm [name="brandId"]')?.value||'');
+    const brand=brandName(brandId);
+    const flavor=String(row.querySelector('[data-vfield="flavor"]')?.value||'').trim();
+    const size=String(row.querySelector('[data-vfield="size"]')?.value||'').trim();
+    const skuInput=row.querySelector('[data-vfield="sku"]');
+    if(!skuInput)return;
+    if(!flavor){
+      skuInput.value='';
+      refreshVariantRow(row);
+      return;
+    }
+    skuInput.value=generatedVariantSku(name,brand,flavor,size,usedVariantSkus(row));
+    refreshVariantRow(row);
+  }
+
+  function cloneVariantFromRow(sourceRow, product={}) {
+    if(!sourceRow)return {};
+    const value=field=>String(sourceRow.querySelector(`[data-vfield="${field}"]`)?.value||'').trim();
+    const numberValue=field=>Math.round(Number(sourceRow.querySelector(`[data-vfield="${field}"]`)?.value||0)*100);
+    return {
+      id:'',
+      productId:product.id||'',
+      flavor:'',
+      size:value('size'),
+      sku:'',
+      barcode:'',
+      price:numberValue('price'),
+      comparePrice:numberValue('comparePrice'),
+      cost:numberValue('cost'),
+      minStock:Math.max(0,Number(value('minStock')||0)),
+      image:value('image'),
+      active:Boolean(sourceRow.querySelector('[data-vfield="active"]')?.checked ?? true)
+    };
   }
 
   function openEditor(id=null) {
@@ -868,7 +920,22 @@
 
   document.addEventListener('input', event => {
     const row=event.target.closest?.('.variant-row');
-    if(row&&event.target.matches('[data-vfield]'))refreshVariantRow(row);
+    if(!row||!event.target.matches('[data-vfield]'))return;
+    if(event.target.matches('[data-vfield="sku"]')&&event.isTrusted){
+      row.dataset.autoSku=event.target.value.trim()?'false':'true';
+    }
+    if(event.target.matches('[data-vfield="flavor"],[data-vfield="size"]')){
+      updateAutoVariantSku(row);
+    } else {
+      refreshVariantRow(row);
+    }
+  });
+
+  $('#editForm').addEventListener('input', event => {
+    if(page!=='products')return;
+    if(event.target.matches('[name="name"],[name="brandId"]')){
+      document.querySelectorAll('#variantRows .variant-row').forEach(updateAutoVariantSku);
+    }
   });
 
   document.addEventListener('click', event => {
@@ -882,7 +949,18 @@
     }
     const addVariant=event.target.closest('#addVariant'); if(addVariant){
       const p=data.products.find(x=>x.id===editing)||{};
-      $('#variantRows').insertAdjacentHTML('beforeend',variantRowHtml({},p));
+      const rows=[...document.querySelectorAll('#variantRows .variant-row')];
+      const source=rows[rows.length-1]||null;
+      const clone=cloneVariantFromRow(source,p);
+      $('#variantRows').insertAdjacentHTML('beforeend',variantRowHtml(clone,p));
+      const created=$('#variantRows .variant-row:last-child');
+      if(created){
+        created.dataset.autoSku='true';
+        refreshVariantRow(created);
+        created.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>created.querySelector('[data-vfield="flavor"]')?.focus(),250);
+      }
+      notify('Novo sabor criado copiando tamanho, preços, custo, estoque mínimo e imagem. Informe o sabor para gerar o SKU automaticamente.');
       return;
     }
     const removeVariant=event.target.closest('[data-remove-variant]'); if(removeVariant){

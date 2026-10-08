@@ -7,7 +7,7 @@
     if(!safe)return'';
     try{
       const url=new URL(safe,location.href);
-      if(url.hostname==='cdn.awsli.com.br')return `/api/product-cutout?url=${encodeURIComponent(url.href)}&v=6`;
+      if(url.hostname==='cdn.awsli.com.br')return `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=10`;
       return safe;
     }catch{return safe}
   };
@@ -45,7 +45,7 @@
               try{
                 const url=new URL(safe,location.href);
                 return url.hostname==='cdn.awsli.com.br'
-                  ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=9`
+                  ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=10`
                   : safe;
               }catch{return safe}
             })(),

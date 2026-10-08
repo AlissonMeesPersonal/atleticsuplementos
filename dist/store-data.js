@@ -96,23 +96,37 @@
     const categories = Object.fromEntries(data.categories.map(x => [x.id, x]));
     return data.products.filter(p => p.active).flatMap(product => {
       const variants = data.variants.filter(v => v.productId === product.id && v.active);
-      return variants.map(variant => ({
-        id: variant.id,
-        productId: product.id,
-        name: product.name,
-        brand: brands[product.brandId]?.name || '',
-        category: categories[product.categoryId]?.name || 'Outros',
-        detail: [variant.size, variant.flavor].filter(Boolean).join(' · '),
-        price: Number(variant.price || 0),
-        comparePrice: Number(variant.comparePrice || 0),
-        cost: Number(variant.cost || 0),
-        minStock: Number(variant.minStock || 0),
-        stock: stockBalance(data, variant.id),
-        sku: variant.sku,
-        image: product.images?.[0]?.url || '',
-        images: product.images || [],
-        featured: Boolean(product.featured)
-      }));
+      return variants.map(variant => {
+        const mainImage = product.images?.[0]?.url || '';
+        const selectedImage = variant.image || mainImage;
+        const images = [];
+        if (variant.image) images.push({ url: variant.image, alt: [product.name, variant.flavor].filter(Boolean).join(' - ') });
+        for (const image of product.images || []) {
+          const url = typeof image === 'string' ? image : image?.url;
+          if (!url || images.some(item => item.url === url)) continue;
+          images.push(typeof image === 'string' ? { url: image } : image);
+        }
+        return {
+          id: variant.id,
+          productId: product.id,
+          name: product.name,
+          brand: brands[product.brandId]?.name || '',
+          category: categories[product.categoryId]?.name || 'Outros',
+          detail: [variant.size, variant.flavor].filter(Boolean).join(' · '),
+          flavor: variant.flavor || '',
+          size: variant.size || '',
+          price: Number(variant.price || 0),
+          comparePrice: Number(variant.comparePrice || 0),
+          cost: Number(variant.cost || 0),
+          minStock: Number(variant.minStock || 0),
+          stock: stockBalance(data, variant.id),
+          sku: variant.sku,
+          barcode: variant.barcode || '',
+          image: selectedImage,
+          images,
+          featured: Boolean(product.featured)
+        };
+      });
     });
   }
 

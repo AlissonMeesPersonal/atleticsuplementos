@@ -4,16 +4,17 @@
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const safeImage=value=>{if(!value)return'';try{const url=new URL(value,location.href);return url.protocol==='https:'||url.origin===location.origin?url.href:''}catch{return''}};
-  const cutoutImage=value=>{
+  const transparentProductImage=value=>{
     const safe=safeImage(value);
     if(!safe)return'';
     try{
       const url=new URL(safe,location.href);
       return url.hostname==='cdn.awsli.com.br'
-        ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&v=6`
+        ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=10`
         : safe;
     }catch{return safe}
   };
+  const cutoutImage=transparentProductImage;
   const categoryFallbackImages = {
     'Proteínas': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/92601117/1-q6ujxwv8d7.png',
     'Creatinas': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93310863/3-nv15p3rp0o.png',
@@ -90,7 +91,7 @@
 
   const colors={'Proteínas':'#faa21a','Creatinas':'#e7e5d9','Pré-treinos':'#bfbdc9','Vitaminas':'#c4ce9e','Acessórios':'#a3aaa4'};
   function bottle(p){const size=(p.detail||'').split('·')[0].trim()||'ATLETIC'; const words=p.name.toUpperCase().split(' '); const label=(words.slice(0,2).join('<br>')||'ATLETIC'); return `<div class="bottle" style="--pack:${colors[p.category]||'#d7d1c3'}"><div class="lid"></div><div class="label"><small>ATLETIC</small><strong>${label}</strong><span>ILUSTRAÇÃO</span><b>${escape(size)}</b></div></div>`}
-  function visual(p){return p.image?`<img src="${escape(p.image)}" alt="${escape(p.name)}" loading="lazy" style="width:100%;height:100%;object-fit:contain;padding:28px;background:#fff">`:`<div aria-hidden="true">${bottle(p)}</div>`}
+  function visual(p){return p.image?`<img src="${escape(transparentProductImage(p.image))}" alt="${escape(p.name)}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;padding:28px;background:transparent">`:`<div aria-hidden="true">${bottle(p)}</div>`}
 
   function renderCategories(){
     products=AtleticStore.catalog();
@@ -113,18 +114,7 @@
         );
       }
 
-      const displaySource=selected?.image_url
-        ? (()=>{
-            const safe=safeImage(selected.image_url);
-            if(!safe)return'';
-            try{
-              const url=new URL(safe,location.href);
-              return url.hostname==='cdn.awsli.com.br'
-                ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=9`
-                : safe;
-            }catch{return safe}
-          })()
-        : cutoutImage(source);
+      const displaySource=transparentProductImage(source);
       return `<img class="category-product-image ${selected?.image_url?'original-selected':''}" src="${escape(displaySource)}" alt="" loading="lazy" decoding="async">`;
     };
 
@@ -150,7 +140,7 @@
     const items=Object.keys(cart).map(cartProduct).filter(Boolean);const count=items.reduce((sum,p)=>sum+cart[p.id],0);const subtotal=items.reduce((sum,p)=>sum+p.price*cart[p.id],0);const coupon=couponRecord();let discount=0;
     if(coupon&&subtotal>=Number(coupon.minimum||0))discount=coupon.kind==='fixed'?Math.min(Number(coupon.amount),subtotal):Math.round(subtotal*Number(coupon.amount)/100);
     $('#count').textContent=count;$('#drawerCount').textContent=`(${count})`;if($('#mobileCount'))$('#mobileCount').textContent=count;
-    $('#cartItems').innerHTML=items.length?items.map(p=>`<div class="cart-line"><div class="mini" aria-hidden="true">${p.image?`<img src="${escape(p.image)}" alt="" style="width:100%;height:100%;object-fit:contain;background:#fff">`:bottle(p)}</div><div><h3>${escape(p.name)}</h3><p>${escape(p.detail)}</p><div class="qty"><button data-qty="${p.id}" data-change="-1" aria-label="Diminuir ${escape(p.name)}">−</button><span>${cart[p.id]}</span><button data-qty="${p.id}" data-change="1" aria-label="Aumentar ${escape(p.name)}">+</button></div></div><div><strong>${money(p.price*cart[p.id])}</strong><br><button class="remove" data-remove="${p.id}">Remover</button></div></div>`).join(''):'<p class="empty-cart">Sua sacola está esperando suas escolhas.<br>Explore o catálogo e adicione seus essenciais.</p>';
+    $('#cartItems').innerHTML=items.length?items.map(p=>`<div class="cart-line"><div class="mini" aria-hidden="true">${p.image?`<img src="${escape(transparentProductImage(p.image))}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;background:transparent">`:bottle(p)}</div><div><h3>${escape(p.name)}</h3><p>${escape(p.detail)}</p><div class="qty"><button data-qty="${p.id}" data-change="-1" aria-label="Diminuir ${escape(p.name)}">−</button><span>${cart[p.id]}</span><button data-qty="${p.id}" data-change="1" aria-label="Aumentar ${escape(p.name)}">+</button></div></div><div><strong>${money(p.price*cart[p.id])}</strong><br><button class="remove" data-remove="${p.id}">Remover</button></div></div>`).join(''):'<p class="empty-cart">Sua sacola está esperando suas escolhas.<br>Explore o catálogo e adicione seus essenciais.</p>';
     $('#subtotal').textContent=money(subtotal);$('#discount').textContent='− '+money(discount);$('#total').textContent=money(subtotal-discount);$('#checkout').disabled=!count;$('#removeCoupon').hidden=!coupon;
     $('#couponMessage').textContent=coupon?`${coupon.code} aplicado${subtotal<Number(coupon.minimum||0)?` — mínimo ${money(coupon.minimum)} ainda não atingido.`:'.'}`:'Digite um cupom válido cadastrado pela loja.';$('#checkoutMessage').textContent='';
   }

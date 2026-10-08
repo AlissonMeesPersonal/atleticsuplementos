@@ -149,19 +149,49 @@
     save('atletic.cart.v2',cart);save('atletic.coupon.v2',activeCoupon);
     const items=Object.keys(cart).map(cartProduct).filter(Boolean);const count=items.reduce((sum,p)=>sum+cart[p.id],0);const subtotal=items.reduce((sum,p)=>sum+p.price*cart[p.id],0);const coupon=couponRecord();let discount=0;
     if(coupon&&subtotal>=Number(coupon.minimum||0))discount=coupon.kind==='fixed'?Math.min(Number(coupon.amount),subtotal):Math.round(subtotal*Number(coupon.amount)/100);
-    $('#count').textContent=count;$('#drawerCount').textContent=`(${count})`;
+    $('#count').textContent=count;$('#drawerCount').textContent=`(${count})`;if($('#mobileCount'))$('#mobileCount').textContent=count;
     $('#cartItems').innerHTML=items.length?items.map(p=>`<div class="cart-line"><div class="mini" aria-hidden="true">${p.image?`<img src="${escape(p.image)}" alt="" style="width:100%;height:100%;object-fit:contain;background:#fff">`:bottle(p)}</div><div><h3>${escape(p.name)}</h3><p>${escape(p.detail)}</p><div class="qty"><button data-qty="${p.id}" data-change="-1" aria-label="Diminuir ${escape(p.name)}">−</button><span>${cart[p.id]}</span><button data-qty="${p.id}" data-change="1" aria-label="Aumentar ${escape(p.name)}">+</button></div></div><div><strong>${money(p.price*cart[p.id])}</strong><br><button class="remove" data-remove="${p.id}">Remover</button></div></div>`).join(''):'<p class="empty-cart">Sua sacola está esperando suas escolhas.<br>Explore o catálogo e adicione seus essenciais.</p>';
     $('#subtotal').textContent=money(subtotal);$('#discount').textContent='− '+money(discount);$('#total').textContent=money(subtotal-discount);$('#checkout').disabled=!count;$('#removeCoupon').hidden=!coupon;
     $('#couponMessage').textContent=coupon?`${coupon.code} aplicado${subtotal<Number(coupon.minimum||0)?` — mínimo ${money(coupon.minimum)} ainda não atingido.`:'.'}`:'Digite um cupom válido cadastrado pela loja.';$('#checkoutMessage').textContent='';
   }
 
+  const mainNav=$('#mainNav');
+  const menuToggle=$('#menuToggle');
+  const navClose=$('#navClose');
+  const navBackdrop=$('#navBackdrop');
+
+  function setMobileMenu(open){
+    if(!mainNav||!menuToggle||!navBackdrop)return;
+    mainNav.classList.toggle('open',open);
+    navBackdrop.hidden=!open;
+    document.body.classList.toggle('menu-open',open);
+    menuToggle.setAttribute('aria-expanded',String(open));
+    menuToggle.setAttribute('aria-label',open?'Fechar menu':'Abrir menu');
+  }
+
+  if(menuToggle)menuToggle.onclick=()=>setMobileMenu(!mainNav.classList.contains('open'));
+  if(navClose)navClose.onclick=()=>setMobileMenu(false);
+  if(navBackdrop)navBackdrop.onclick=()=>setMobileMenu(false);
+
+  if($('#mobileSearch'))$('#mobileSearch').onclick=()=>{
+    setMobileMenu(false);
+    $('#searchForm').scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>$('#search').focus(),280);
+  };
+  if($('#mobileCart'))$('#mobileCart').onclick=()=>$('#cartOpen').click();
+
+  window.addEventListener('resize',()=>{
+    if(window.innerWidth>700)setMobileMenu(false);
+  });
+
   document.addEventListener('click',e=>{
-    const c=e.target.closest('[data-category]');if(c){category=c.dataset.category;renderProducts();if(c.closest('#categories'))$('#catalog').scrollIntoView({behavior:'smooth'})}
+    const c=e.target.closest('[data-category]');if(c){category=c.dataset.category;renderProducts();if(c.closest('#mainNav'))setMobileMenu(false);if(c.closest('#categories'))$('#catalog').scrollIntoView({behavior:'smooth'})}
     const a=e.target.closest('[data-add]');if(a&&!a.disabled){const p=cartProduct(a.dataset.add);if(!p||p.stock<=0)return;cart[p.id]=Math.min((cart[p.id]||0)+1,p.stock,99);renderCart();toast('Produto adicionado à sacola')}
     const q=e.target.closest('[data-qty]');if(q){const p=cartProduct(q.dataset.qty);if(!p)return;const next=Math.min((cart[p.id]||0)+Number(q.dataset.change),p.stock,99);if(next<=0)delete cart[p.id];else cart[p.id]=next;renderCart()}
     const r=e.target.closest('[data-remove]');if(r){delete cart[r.dataset.remove];renderCart()}
   });
 
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&mainNav?.classList.contains('open'))setMobileMenu(false)});
   $('#search').addEventListener('input',renderProducts);$('#searchForm').onsubmit=e=>{e.preventDefault();$('#catalog').scrollIntoView({behavior:'smooth'})};$('#sort').onchange=renderProducts;
   $('#cartOpen').onclick=()=>{$('#cart').showModal();document.body.style.overflow='hidden'};function closeCart(){$('#cart').close()}$('#cartClose').onclick=closeCart;$('#cart').addEventListener('close',()=>{document.body.style.overflow='';$('#cartOpen').focus()});
   $('#couponForm').onsubmit=e=>{e.preventDefault();const code=$('#coupon').value.trim().toUpperCase();const found=AtleticStore.load().coupons.find(c=>c.code===code&&c.active);if(found){activeCoupon=found.code;renderCart()}else $('#couponMessage').textContent='Cupom não encontrado ou inativo.'};

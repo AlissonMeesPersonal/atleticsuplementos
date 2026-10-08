@@ -71,7 +71,7 @@
   }
   const modules = {
     overview: 'Dashboard', products: 'Produtos', categories: 'Categorias', brands: 'Marcas', stock: 'Estoque',
-    customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', showcase: 'Vitrine do site', images: 'Biblioteca de imagens', settings: 'Configurações'
+    customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', showcase: 'Vitrine do site', images: 'Biblioteca de imagens', integrations: 'Integrações', settings: 'Configurações'
   };
   let page = 'overview';
   let editing = null;
@@ -496,6 +496,168 @@
     renderLibrary();
   }
 
+  function olistCatalogItems() {
+    return data.variants
+      .filter(variant=>variant.active&&String(variant.sku||'').trim())
+      .map(variant=>{
+        const product=data.products.find(item=>item.id===variant.productId);
+        return {
+          sku:String(variant.sku||'').trim(),
+          name:product?.name||variantLabel(variant.id),
+          flavor:String(variant.flavor||'').trim(),
+          size:String(variant.size||'').trim(),
+          barcode:String(variant.barcode||'').trim(),
+          price:Number(variant.price||0),
+          stock:balance(variant.id)
+        };
+      });
+  }
+
+  function olistStatusMarkup(status={}) {
+    const configured=Boolean(status.configured);
+    const account=status.metadata?.account;
+    const health=status.lastHealthcheckStatus;
+    return `
+      <div class="integration-status-line">
+        <span class="integration-dot ${configured?'ready':'waiting'}"></span>
+        <div>
+          <strong>${configured?'Credencial instalada na Vercel':'Aguardando Token API'}</strong>
+          <small>${configured?'A chave permanece somente no servidor e não é enviada ao navegador.':'Adicione OLIST_ERP_TOKEN como variável sensível na Vercel para ativar a conexão.'}</small>
+        </div>
+      </div>
+      ${account?`<div class="integration-account"><small>Conta validada</small><strong>${esc(account.company||account.legalName||'ERP da Olist')}</strong><span>${esc([account.city,account.state].filter(Boolean).join(' / '))}</span></div>`:''}
+      <div class="status-row integration-chips">
+        <span class="status-chip">API: Token V2</span>
+        <span class="status-chip">Pedidos: preparado</span>
+        <span class="status-chip">SKU / sabores: preparado</span>
+        <span class="status-chip">NF-e: estrutura preparada</span>
+        <span class="status-chip">Estoque: próxima ativação</span>
+        ${health?`<span class="status-chip">Último teste: ${esc(health)}</span>`:''}
+      </div>
+    `;
+  }
+
+  async function loadOlistStatus() {
+    const target=$('#olistStatus');
+    if(!target)return;
+    try{
+      const response=await fetch('/api/olist-erp',{headers:{Authorization:`Bearer ${adminToken()}`}});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||'Não foi possível consultar a integração.');
+      target.innerHTML=olistStatusMarkup(payload);
+      const disabled=!payload.configured;
+      if($('#olistTest'))$('#olistTest').disabled=disabled;
+      if($('#olistMatch'))$('#olistMatch').disabled=disabled;
+    }catch(error){
+      target.innerHTML=`<p class="integration-error">${esc(error.message)}</p>`;
+    }
+  }
+
+  async function testOlistConnection() {
+    const button=$('#olistTest');
+    const output=$('#olistOutput');
+    if(!button||!output)return;
+    button.disabled=true;
+    button.textContent='Testando…';
+    output.textContent='';
+    try{
+      const response=await fetch('/api/olist-erp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+        body:JSON.stringify({action:'test'})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||'Falha ao testar a conexão.');
+      output.className='integration-output success';
+      output.textContent=`Conectado com sucesso: ${payload.account?.company||'ERP da Olist'}.`;
+      await loadOlistStatus();
+    }catch(error){
+      output.className='integration-output error';
+      output.textContent=error.message;
+    }finally{
+      button.disabled=false;
+      button.textContent='Testar conexão';
+    }
+  }
+
+  async function matchOlistCatalog() {
+    const button=$('#olistMatch');
+    const output=$('#olistOutput');
+    if(!button||!output)return;
+    const items=olistCatalogItems();
+    if(!items.length){
+      output.className='integration-output error';
+      output.textContent='Nenhuma variação ativa com SKU para mapear.';
+      return;
+    }
+    button.disabled=true;
+    button.textContent='Mapeando SKUs…';
+    output.className='integration-output';
+    output.textContent=`Consultando ${items.length} SKU(s) no ERP…`;
+    try{
+      const response=await fetch('/api/olist-erp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+        body:JSON.stringify({action:'match_catalog',items})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||'Falha ao mapear catálogo.');
+      const summary=payload.summary||{};
+      output.className='integration-output success';
+      output.textContent=`${summary.matched||0} SKU(s) vinculados · ${summary.notFound||0} ainda não encontrados no ERP · ${summary.errors||0} erro(s).`;
+    }catch(error){
+      output.className='integration-output error';
+      output.textContent=error.message;
+    }finally{
+      button.disabled=false;
+      button.textContent='Mapear catálogo por SKU';
+    }
+  }
+
+  function renderIntegrations() {
+    $('#adminContent').innerHTML=`
+      <div class="integration-page">
+        <section class="panel integration-hero">
+          <div class="integration-brand">
+            <div class="integration-logo">O</div>
+            <div>
+              <p class="eyebrow">ERP / FISCAL / ESTOQUE</p>
+              <h2>ERP da Olist</h2>
+              <p class="muted">A ponte do e-commerce Atletic com pedidos, clientes, SKUs por sabor, estoque, NF-e e rastreamento.</p>
+            </div>
+          </div>
+          <div id="olistStatus" class="integration-status"><p class="muted">Verificando configuração…</p></div>
+          <div class="integration-actions">
+            <button id="olistTest" class="button" disabled>Testar conexão</button>
+            <button id="olistMatch" class="button secondary" disabled>Mapear catálogo por SKU</button>
+          </div>
+          <p id="olistOutput" class="integration-output" role="status"></p>
+        </section>
+
+        <div class="admin-grid integration-grid">
+          <section class="panel">
+            <h2>Fluxo preparado</h2>
+            <ol class="integration-steps">
+              <li><b>01</b><div><strong>Pagamento aprovado</strong><span>O pedido será enviado ao ERP somente após confirmação do pagamento.</span></div></li>
+              <li><b>02</b><div><strong>Pedido + cliente + sabor/SKU</strong><span>Cada variação usa o SKU próprio, preservando o controle de estoque por sabor.</span></div></li>
+              <li><b>03</b><div><strong>Fiscal</strong><span>O pedido poderá gerar NF-e no ERP e os dados da nota serão salvos no pedido da Atletic.</span></div></li>
+              <li><b>04</b><div><strong>Minha Conta</strong><span>Status, nota e rastreamento voltarão para a área do cliente.</span></div></li>
+            </ol>
+          </section>
+          <section class="panel">
+            <h2>Ativação</h2>
+            <p class="muted">No ERP da Olist, instale a extensão <strong>Token API</strong> e gere o token em Configurações → E-commerce → Token API.</p>
+            <div class="integration-secret-note"><strong>Segurança</strong><span>Não salvamos o token no navegador ou no Supabase. Ele deve ficar como variável sensível <code>OLIST_ERP_TOKEN</code> na Vercel.</span></div>
+            <p class="muted integration-version-note">A integração inicial usa a API V2 por Token para ativação rápida. A arquitetura foi isolada para podermos migrar para Aplicativo API V3 depois sem alterar a loja.</p>
+          </section>
+        </div>
+      </div>
+    `;
+    $('#olistTest').onclick=testOlistConnection;
+    $('#olistMatch').onclick=matchOlistCatalog;
+    loadOlistStatus();
+  }
+
   function renderSettings() {
     const cfg=window.ATLETIC_CONFIG||{};
     $('#adminContent').innerHTML=`<div class="admin-grid"><section class="panel"><h2>Integrações</h2><div class="status-row"><span class="status-chip">GitHub → Vercel: conectado</span><span class="status-chip">Supabase: ${cfg.supabaseUrl?'configurado':'aguardando projeto exclusivo'}</span><span class="status-chip">Busca de imagens: função criada</span><span class="status-chip">Pagamento: integrar depois</span></div><p class="muted" style="margin-top:16px">A chave secreta do provedor de imagens deve ficar apenas nas variáveis da Vercel. O navegador nunca recebe essa chave.</p></section><section class="panel"><h2>Dados de demonstração</h2><p class="muted">Admin e vitrine deste navegador compartilham os mesmos cadastros locais.</p><div class="button-row"><button id="resetDemo" class="button secondary">Restaurar exemplos</button></div></section></div>`;
@@ -511,6 +673,7 @@
     if(page==='orders') return renderOrders();
     if(page==='showcase') return renderShowcase();
     if(page==='images') return renderImageLibrary();
+    if(page==='integrations') return renderIntegrations();
     if(page==='settings') return renderSettings();
     if(page==='brands' || page==='categories') {
       syncLibraryTaxonomy({ renderAfter: true, silent: true });

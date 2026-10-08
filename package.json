@@ -2,6 +2,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "sharp": "^0.34.4"
+    "sharp": "^0.34.4",
+    "archiver": "^7.0.1"
   }
 }

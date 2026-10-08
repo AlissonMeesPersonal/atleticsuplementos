@@ -113,7 +113,8 @@
         );
       }
 
-      return `<img class="category-product-image" src="${escape(cutoutImage(source))}" alt="" loading="lazy">`;
+      const displaySource=selected?.image_url ? safeImage(selected.image_url) : cutoutImage(source);
+      return `<img class="category-product-image ${selected?.image_url?'original-selected':''}" src="${escape(displaySource)}" alt="" loading="lazy" decoding="async">`;
     };
 
     $('#categories').innerHTML=categories.map((c,i)=>`<button class="cat" data-category="${escape(c)}"><div class="cat-image" aria-hidden="true">${i===0?'<span>↗</span>':categoryVisual(c)}</div>${c==='Todos'?'Ver tudo':escape(c)}</button>`).join('');

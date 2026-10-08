@@ -77,6 +77,7 @@
   let editing = null;
   let selectedImage = '';
   let selectedImageSource = '';
+  let variantImageTarget = null;
   let libraryImageCache = [];
   let data = AtleticStore.load();
 
@@ -519,21 +520,125 @@
     return `<label${cls}>${label}<input name="${name}" ${attr}${req} value="${esc(val)}"></label>`;
   }
 
+  function productVariants(productId) {
+    return data.variants.filter(v => v.productId === productId);
+  }
+
+  function variantImage(variant, product) {
+    return String(variant?.image || product?.images?.[0]?.url || '');
+  }
+
+  function generatedVariantSku(name, brand, flavor, size, used = new Set()) {
+    const rawBase = generateInternalSku(name, brand).replace(/-\d{3}$/,'');
+    const flavorCode = skuNormalize(flavor).split(/\s+/).filter(Boolean).map(x=>x.slice(0,3)).join('').slice(0,6);
+    const sizeCode = skuNormalize(size).replace(/\s+/g,'').slice(0,6);
+    const stem = [rawBase, flavorCode || sizeCode].filter(Boolean).join('-');
+    for (let index = 1; index <= 999; index++) {
+      const candidate = `${stem}-${String(index).padStart(3,'0')}`;
+      if (!used.has(candidate.toUpperCase())) return candidate;
+    }
+    return `${stem}-${Date.now().toString().slice(-6)}`;
+  }
+
+  function variantRowHtml(variant = {}, product = {}) {
+    const id = variant.id || '';
+    const image = variantImage(variant, product);
+    const current = id ? balance(id) : 0;
+    const active = variant.active ?? true;
+    const stockLabel = id ? `Saldo atual: ${current}` : 'Novo sabor';
+    return `
+      <article class="variant-row" data-variant-id="${esc(id)}">
+        <div class="variant-row-head">
+          <div class="variant-row-title">
+            <img data-variant-preview src="${esc(image || 'assets/logo.svg')}" alt="">
+            <div>
+              <strong data-variant-title>${esc(variant.flavor || 'Nova variação')}</strong>
+              <small data-variant-subtitle>${esc([variant.size,variant.sku].filter(Boolean).join(' · ') || 'Defina sabor, tamanho e SKU')}</small>
+              <span class="variant-stock-chip ${current<=0?'zero':''}">${stockLabel}</span>
+            </div>
+          </div>
+          <button type="button" class="variant-remove" data-remove-variant>Remover</button>
+        </div>
+        <div class="variant-grid">
+          <label>Sabor
+            <input data-vfield="flavor" value="${esc(variant.flavor || '')}" placeholder="Ex.: Chocolate">
+          </label>
+          <label>Peso / tamanho
+            <input data-vfield="size" value="${esc(variant.size || '')}" placeholder="Ex.: 900 g">
+          </label>
+          <label>SKU
+            <input data-vfield="sku" value="${esc(variant.sku || '')}" placeholder="Gerado automaticamente">
+          </label>
+          <label>Código de barras
+            <input data-vfield="barcode" value="${esc(variant.barcode || '')}">
+          </label>
+          <label>Preço de venda
+            <input data-vfield="price" type="number" min="0" step="0.01" value="${(Number(variant.price||0)/100).toFixed(2)}">
+          </label>
+          <label>Preço anterior
+            <input data-vfield="comparePrice" type="number" min="0" step="0.01" value="${(Number(variant.comparePrice||0)/100).toFixed(2)}">
+          </label>
+          <label>Custo
+            <input data-vfield="cost" type="number" min="0" step="0.01" value="${(Number(variant.cost||0)/100).toFixed(2)}">
+          </label>
+          <label>Estoque mínimo
+            <input data-vfield="minStock" type="number" step="1" min="0" value="${Number(variant.minStock||0)}">
+          </label>
+          <label class="span-4">Imagem específica do sabor
+            <div class="variant-image-row">
+              <input data-vfield="image" value="${esc(variant.image || '')}" placeholder="Se vazio, usa a imagem principal do produto">
+              <div class="variant-image-actions">
+                <button type="button" data-variant-main-image>Usar imagem principal</button>
+                <button type="button" data-variant-library>Escolher da biblioteca</button>
+              </div>
+            </div>
+          </label>
+          ${id
+            ? '<label>Variação ativa<input data-vfield="active" type="checkbox" '+(active?'checked':'')+'></label>'
+            : '<label>Estoque inicial<input data-vfield="initialStock" type="number" step="1" min="0" value="0"></label><label>Variação ativa<input data-vfield="active" type="checkbox" checked></label>'
+          }
+        </div>
+        <p class="variant-help">${id?'Movimente entradas e saídas pela aba Estoque. O saldo é independente para este sabor.':'Ao salvar, o estoque inicial informado será criado somente para este sabor.'}</p>
+      </article>
+    `;
+  }
+
+  function renderVariantEditor(productId, product = {}) {
+    const section = $('#variantEditor');
+    const rows = $('#variantRows');
+    if (!section || !rows) return;
+    section.hidden = page !== 'products';
+    if (page !== 'products') return;
+    const variants = productId ? productVariants(productId) : [];
+    rows.innerHTML = (variants.length ? variants : [{}]).map(v => variantRowHtml(v, product)).join('');
+  }
+
+  function refreshVariantRow(row) {
+    const flavor = row.querySelector('[data-vfield="flavor"]')?.value.trim() || 'Nova variação';
+    const size = row.querySelector('[data-vfield="size"]')?.value.trim() || '';
+    const sku = row.querySelector('[data-vfield="sku"]')?.value.trim() || '';
+    const image = row.querySelector('[data-vfield="image"]')?.value.trim() || selectedImage || 'assets/logo.svg';
+    const title = row.querySelector('[data-variant-title]');
+    const subtitle = row.querySelector('[data-variant-subtitle]');
+    const preview = row.querySelector('[data-variant-preview]');
+    if (title) title.textContent = flavor;
+    if (subtitle) subtitle.textContent = [size,sku].filter(Boolean).join(' · ') || 'Defina sabor, tamanho e SKU';
+    if (preview) preview.src = image;
+  }
+
   function openEditor(id=null) {
-    editing=id; selectedImage=''; selectedImageSource=''; $('#formError').textContent=''; $('#imageResults').innerHTML=''; $('#imageSearchStatus').textContent=''; $('#imageSearchBox').hidden=page!=='products';
+    editing=id; selectedImage=''; selectedImageSource=''; variantImageTarget=null; $('#formError').textContent=''; $('#imageResults').innerHTML=''; $('#imageSearchStatus').textContent=''; $('#imageSearchBox').hidden=page!=='products';
     let html='';
     if(page==='products'){
-      const p=data.products.find(x=>x.id===id)||{}; const v=activeVariant(id)||{}; selectedImage=imageFor(p); selectedImageSource=p.images?.[0]?.sourceUrl||'';
+      const p=data.products.find(x=>x.id===id)||{}; selectedImage=imageFor(p); selectedImageSource=p.images?.[0]?.sourceUrl||'';
       html += input('name','Nome do produto','text',p.name||'',[],true,true);
       html += input('brandId','Marca','select',p.brandId||data.brands[0]?.id||'',data.brands.map(x=>[x.id,x.name]),false,true);
       html += input('categoryId','Categoria','select',p.categoryId||data.categories[0]?.id||'',data.categories.map(x=>[x.id,x.name]),false,true);
-      html += input('sku','SKU / código interno (automático)','text',v.sku||'',[],false,true);
-      html += input('barcode','Código de barras','text',v.barcode||'');
-      html += input('flavor','Sabor', 'text',v.flavor||''); html += input('size','Peso / tamanho','text',v.size||'');
-      html += input('price','Preço de venda','money',v.price||0,[],false,true); html += input('comparePrice','Preço anterior/promocional','money',v.comparePrice||0);
-      html += input('cost','Custo','money',v.cost||0); html += input('minStock','Estoque mínimo','number',v.minStock||0);
-      html += input('description','Descrição','textarea',p.description||'',[],true); html += input('featured','Em destaque','checkbox',Boolean(p.featured)); html += input('active','Produto ativo','checkbox',p.active??true);
-      if(selectedImage) $('#imageSearchStatus').innerHTML=`<div class="selected-image"><img src="${esc(selectedImage)}" alt=""><div><strong>Imagem atual selecionada</strong><br><small>${esc(selectedImage)}</small></div></div>`;
+      html += input('description','Descrição','textarea',p.description||'',[],true);
+      html += input('featured','Em destaque','checkbox',Boolean(p.featured));
+      html += input('active','Produto ativo','checkbox',p.active??true);
+      if(selectedImage) $('#imageSearchStatus').innerHTML=`<div class="selected-image"><img src="${esc(selectedImage)}" alt=""><div><strong>Imagem principal do produto</strong><br><small>Os sabores sem imagem própria usarão esta imagem.</small></div></div>`;
+      setTimeout(()=>renderVariantEditor(id,p),0);
     } else if(page==='categories') { const r=data.categories.find(x=>x.id===id)||{}; html=input('name','Nome','text',r.name||'',[],true,true)+input('slug','Slug','text',r.slug||'',[],true)+input('active','Ativa','checkbox',r.active??true); }
     else if(page==='brands') { const r=data.brands.find(x=>x.id===id)||{}; html=input('name','Nome','text',r.name||'',[],true,true)+input('active','Ativa','checkbox',r.active??true); }
     else if(page==='stock') { html=input('variantId','Produto / variação','select','',data.variants.map(v=>[v.id,variantLabel(v.id)]),true,true)+input('lot','Lote','text','',[],false,true)+input('expires','Validade','date','')+input('delta','Entrada (+) ou saída (-)','number','',[],false,true)+input('reason','Motivo','text','',[],true,true); }
@@ -545,6 +650,8 @@
     $('#libraryFilter').value='';
     $('#libraryBrowseCount').textContent='';
     libraryImageCache=[];
+    $('#editor').classList.toggle('product-editor',page==='products');
+    if(page!=='products'&&$('#variantEditor'))$('#variantEditor').hidden=true;
     $('#editor').showModal();
   }
 
@@ -640,6 +747,7 @@
   }
 
   async function searchImages() {
+    variantImageTarget=null;
     const name=$('#editForm [name=name]')?.value.trim(); if(!name){$('#imageSearchStatus').textContent='Digite primeiro o nome do produto.';return;}
     const button=$('#searchImages'); button.disabled=true; $('#libraryBrowseTools').hidden=true; $('#imageSearchStatus').textContent='Pesquisando imagens na internet…'; $('#imageResults').innerHTML='';
     try{
@@ -652,6 +760,7 @@
   }
 
   async function importLegacyImages() {
+    variantImageTarget=null;
     const button = $('#importLegacyImages');
     button.disabled = true;
     $('#imageSearchStatus').textContent = 'Importando imagens do site atual da Atletic… isso pode levar alguns segundos.';
@@ -679,16 +788,64 @@
     try{
       if(page==='products'){
         const product=editing?data.products.find(x=>x.id===editing):{id:AtleticStore.uid('prod'),images:[]};
-        const variant=editing?activeVariant(editing):{id:AtleticStore.uid('var'),productId:product.id};
         const name=String(fd.get('name')||'').trim();
         if(!name) throw new Error('Nome do produto é obrigatório.');
-        const selectedBrandName=brandName(String(fd.get('brandId')||''));
-        const sku=String(fd.get('sku')||'').trim() || generateInternalSku(name, selectedBrandName);
-        if(data.variants.some(v=>v.id!==variant.id&&v.sku.toLowerCase()===sku.toLowerCase())) throw new Error('Já existe uma variação com esse SKU.');
-        Object.assign(product,{name,brandId:String(fd.get('brandId')),categoryId:String(fd.get('categoryId')),description:String(fd.get('description')||'').trim(),featured:fd.has('featured'),active:fd.has('active')});
+        const brandId=String(fd.get('brandId')||'');
+        const categoryId=String(fd.get('categoryId')||'');
+        const selectedBrandName=brandName(brandId);
+        Object.assign(product,{name,brandId,categoryId,description:String(fd.get('description')||'').trim(),featured:fd.has('featured'),active:fd.has('active')});
         if(selectedImage) product.images=[{url:selectedImage,sourceUrl:selectedImageSource,alt:name}];
-        Object.assign(variant,{sku,barcode:String(fd.get('barcode')||'').trim(),flavor:String(fd.get('flavor')||'').trim(),size:String(fd.get('size')||'').trim(),price:Math.round(Number(fd.get('price')||0)*100),comparePrice:Math.round(Number(fd.get('comparePrice')||0)*100),cost:Math.round(Number(fd.get('cost')||0)*100),minStock:Number(fd.get('minStock')||0),active:fd.has('active')});
-        if(!editing){data.products.push(product);data.variants.push(variant);}
+
+        const rows=[...document.querySelectorAll('#variantRows .variant-row')];
+        if(!rows.length) throw new Error('Cadastre pelo menos um sabor / variação.');
+        const existing=productVariants(product.id);
+        const existingIds=new Set(existing.map(v=>v.id));
+        const keptIds=new Set();
+        const usedSkus=new Set(data.variants.filter(v=>v.productId!==product.id).map(v=>String(v.sku||'').toUpperCase()).filter(Boolean));
+        const nextVariants=[];
+
+        for(const row of rows){
+          const id=row.dataset.variantId||AtleticStore.uid('var');
+          const get=field=>row.querySelector(`[data-vfield="${field}"]`);
+          const flavor=String(get('flavor')?.value||'').trim();
+          const size=String(get('size')?.value||'').trim();
+          if(!flavor && rows.length>1) throw new Error('Informe o sabor de todas as variações.');
+          let sku=String(get('sku')?.value||'').trim();
+          if(!sku) sku=generatedVariantSku(name,selectedBrandName,flavor,size,usedSkus);
+          if(usedSkus.has(sku.toUpperCase())) throw new Error(`SKU duplicado: ${sku}`);
+          usedSkus.add(sku.toUpperCase());
+          const variant={
+            id,
+            productId:product.id,
+            sku,
+            barcode:String(get('barcode')?.value||'').trim(),
+            flavor,
+            size,
+            price:Math.round(Number(get('price')?.value||0)*100),
+            comparePrice:Math.round(Number(get('comparePrice')?.value||0)*100),
+            cost:Math.round(Number(get('cost')?.value||0)*100),
+            minStock:Math.max(0,Number(get('minStock')?.value||0)),
+            image:String(get('image')?.value||'').trim(),
+            active:Boolean(get('active')?.checked)
+          };
+          nextVariants.push(variant);
+          keptIds.add(id);
+
+          if(!existingIds.has(id)){
+            const initialStock=Math.max(0,Math.floor(Number(get('initialStock')?.value||0)));
+            if(initialStock>0)data.stock.push({id:AtleticStore.uid('mov'),variantId:id,lot:'',expires:'',delta:initialStock,reason:'Estoque inicial da variação',createdAt:new Date().toISOString()});
+          }
+        }
+
+        const removed=existing.filter(v=>!keptIds.has(v.id));
+        const preservedRemoved=[];
+        for(const variant of removed){
+          if(data.stock.some(m=>m.variantId===variant.id))preservedRemoved.push({...variant,active:false});
+        }
+
+        data.variants=data.variants.filter(v=>v.productId!==product.id);
+        data.variants.push(...nextVariants,...preservedRemoved);
+        if(!editing)data.products.push(product);
       } else if(page==='categories') { const r=editing?data.categories.find(x=>x.id===editing):{id:AtleticStore.uid('cat')}; r.name=String(fd.get('name')||'').trim(); r.slug=slugify(fd.get('slug')||r.name); r.active=fd.has('active'); if(!r.name)throw new Error('Informe a categoria.'); if(!editing)data.categories.push(r); }
       else if(page==='brands') { const r=editing?data.brands.find(x=>x.id===editing):{id:AtleticStore.uid('brand')}; r.name=String(fd.get('name')||'').trim(); r.active=fd.has('active'); if(!r.name)throw new Error('Informe a marca.'); if(!editing)data.brands.push(r); }
       else if(page==='stock') { const variantId=String(fd.get('variantId')); const delta=Number(fd.get('delta')); if(!Number.isInteger(delta)||delta===0)throw new Error('Informe uma quantidade inteira diferente de zero.'); if(balance(variantId)+delta<0)throw new Error('Saída maior que o saldo atual.'); data.stock.push({id:AtleticStore.uid('mov'),variantId,lot:String(fd.get('lot')||'').trim(),expires:String(fd.get('expires')||''),delta,reason:String(fd.get('reason')||'').trim(),createdAt:new Date().toISOString()}); }
@@ -697,6 +854,11 @@
       persist(); $('#editor').close(); render();
     } catch(error) { $('#formError').textContent=error.message; }
   };
+
+  document.addEventListener('input', event => {
+    const row=event.target.closest?.('.variant-row');
+    if(row&&event.target.matches('[data-vfield]'))refreshVariantRow(row);
+  });
 
   document.addEventListener('click', event => {
     const nav=event.target.closest('[data-page]'); if(nav){page=nav.dataset.page;render();return;}
@@ -707,7 +869,38 @@
       else if(page==='brands'&&data.products.some(x=>x.brandId===id)){notify('Marca em uso. Mova os produtos ou desative a marca.');return;}
       else data[page]=data[page].filter(x=>x.id!==id); persist(); render(); return;
     }
+    const addVariant=event.target.closest('#addVariant'); if(addVariant){
+      const p=data.products.find(x=>x.id===editing)||{};
+      $('#variantRows').insertAdjacentHTML('beforeend',variantRowHtml({},p));
+      return;
+    }
+    const removeVariant=event.target.closest('[data-remove-variant]'); if(removeVariant){
+      const row=removeVariant.closest('.variant-row');
+      if(document.querySelectorAll('#variantRows .variant-row').length<=1){notify('O produto precisa ter pelo menos uma variação.');return;}
+      row?.remove();
+      return;
+    }
+    const useMain=event.target.closest('[data-variant-main-image]'); if(useMain){
+      const row=useMain.closest('.variant-row');
+      const input=row?.querySelector('[data-vfield="image"]');
+      if(input){input.value='';refreshVariantRow(row);}
+      return;
+    }
+    const pickVariantImage=event.target.closest('[data-variant-library]'); if(pickVariantImage){
+      variantImageTarget=pickVariantImage.closest('.variant-row');
+      searchLibrary().then(()=>{$('#imageSearchStatus').textContent='Selecione abaixo a imagem que corresponde a este sabor.';});
+      return;
+    }
     const image=event.target.closest('[data-image]'); if(image){
+      if(variantImageTarget){
+        const input=variantImageTarget.querySelector('[data-vfield="image"]');
+        if(input)input.value=image.dataset.image||'';
+        refreshVariantRow(variantImageTarget);
+        document.querySelectorAll('.image-option').forEach(x=>x.classList.toggle('selected',x===image));
+        notify('Imagem vinculada somente a este sabor.');
+        variantImageTarget=null;
+        return;
+      }
       selectedImage=image.dataset.image;
       selectedImageSource=image.dataset.source||'';
       document.querySelectorAll('.image-option').forEach(x=>x.classList.toggle('selected',x===image));

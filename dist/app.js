@@ -59,6 +59,7 @@
   function save(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
 
   let products=AtleticStore.catalog();
+  let siteVisuals={hero:[],highlights:{}};
   let categories=['Todos',...new Set(products.map(p=>p.category))];
   let category='Todos';
   let stored=read('atletic.cart.v2',{}), cart={};
@@ -100,8 +101,9 @@
     if(!categories.includes(category))category='Todos';
 
     const categoryVisual = categoryName => {
+      const selected=siteVisuals.highlights?.[categoryName];
       const realProduct = pickCategoryProduct(categoryName);
-      const source = realProduct?.image || categoryFallbackImages[categoryName] || '';
+      const source = selected?.image_url || realProduct?.image || categoryFallbackImages[categoryName] || '';
 
       if (!source) {
         return bottle(
@@ -154,6 +156,19 @@
   $('#removeCoupon').onclick=()=>{activeCoupon=null;renderCart()};
   $('#checkout').onclick=()=>{$('#checkoutMessage').textContent='Checkout ainda bloqueado. A próxima integração validará preço, frete, cupom, estoque e pagamento no servidor antes de criar o pedido.'};
   $('#year').textContent=new Date().getFullYear();
+
+  async function loadSiteVisuals(){
+    try{
+      const response=await fetch('/api/site-visuals');
+      const payload=await response.json().catch(()=>({}));
+      if(response.ok&&payload.visuals){
+        siteVisuals=payload.visuals;
+        renderCategories();
+      }
+    }catch{}
+  }
+
   renderCategories();renderProducts();renderCart();
+  loadSiteVisuals();
   window.addEventListener('storage',event=>{if(event.key===AtleticStore.KEY){products=AtleticStore.catalog();renderCategories();renderProducts();renderCart()}if(event.key===THEME_KEY)applyTheme(readTheme())});
 })();

@@ -52,6 +52,14 @@
     {
       "source": "/assets/:path*",
       "destination": "/dist/assets/:path*"
+    },
+    {
+      "source": "/purchase-flow.js",
+      "destination": "/dist/purchase-flow.js"
+    },
+    {
+      "source": "/purchase-flow.css",
+      "destination": "/dist/purchase-flow.css"
     }
   ],
   "headers": [

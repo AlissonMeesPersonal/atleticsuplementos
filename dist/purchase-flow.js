@@ -333,4 +333,138 @@
               </label>
               <div class="pf-grid-two">
                 <label>WhatsApp
-                  <input id="pfPhone" data-pf-field="phone" inputmode="tel" autocomplete="tel" 
+                  <input id="pfPhone" data-pf-field="phone" inputmode="tel" autocomplete="tel" placeholder="(51) 99999-9999" required>
+                </label>
+                <label>CPF
+                  <input id="pfCpf" data-pf-field="cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" required>
+                </label>
+              </div>
+              <div class="pf-form-actions">
+                <button type="button" class="pf-back" data-pf-back="1">Voltar</button>
+                <button class="button" type="submit">Continuar <span>↗</span></button>
+              </div>
+            </form>
+          </section>
+
+          <section class="pf-step" data-pf-step="3">
+            <p class="pf-step-title">Endereço de entrega</p>
+            <form id="pfAddressForm" class="pf-form">
+              <div class="pf-grid-two pf-grid-cep">
+                <label>CEP
+                  <input id="pfCep" data-pf-field="cep" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" maxlength="9" required>
+                </label>
+                <label>Número
+                  <input id="pfNumber" data-pf-field="number" autocomplete="address-line2" placeholder="123" required>
+                </label>
+              </div>
+              <label>Rua / Avenida
+                <input id="pfStreet" data-pf-field="street" autocomplete="address-line1" placeholder="Nome da rua" required>
+              </label>
+              <div class="pf-grid-two">
+                <label>Bairro
+                  <input id="pfDistrict" data-pf-field="district" placeholder="Bairro" required>
+                </label>
+                <label>Cidade
+                  <input id="pfCity" data-pf-field="city" autocomplete="address-level2" placeholder="Cidade" required>
+                </label>
+              </div>
+              <div class="pf-grid-two">
+                <label>Estado
+                  <input id="pfState" data-pf-field="state" autocomplete="address-level1" placeholder="RS" maxlength="2" required>
+                </label>
+                <label>Complemento
+                  <input id="pfComplement" data-pf-field="complement" placeholder="Apto, bloco...">
+                </label>
+              </div>
+              <div class="pf-form-actions">
+                <button type="button" class="pf-back" data-pf-back="2">Voltar</button>
+                <button class="button" type="submit">Revisar pedido <span>↗</span></button>
+              </div>
+            </form>
+          </section>
+
+          <section class="pf-step pf-review" data-pf-step="4">
+            <p class="pf-step-title">Resumo do pedido</p>
+            <div id="pfReviewItems" class="pf-review-items"></div>
+            <div class="pf-review-totals">
+              <div><span>Subtotal</span><strong id="pfReviewSubtotal"></strong></div>
+              <div><span>Desconto</span><strong id="pfReviewDiscount"></strong></div>
+              <div class="grand"><span>Total dos produtos</span><strong id="pfReviewTotal"></strong></div>
+            </div>
+            <div class="pf-review-address">
+              <small>Entrega para</small>
+              <strong id="pfReviewAddress"></strong>
+            </div>
+            <p class="pf-payment-note">Frete definitivo e pagamento serão conectados na próxima etapa da plataforma.</p>
+            <div class="pf-form-actions">
+              <button type="button" class="pf-back" data-pf-back="3">Editar endereço</button>
+              <button type="button" class="button" id="pfPaymentNext">Ir para pagamento <span>↗</span></button>
+            </div>
+            <p id="pfCheckoutMessage" class="pf-message" aria-live="polite"></p>
+          </section>
+        </div>
+      </dialog>
+    `);
+
+    $('#checkoutClose').addEventListener('click', closeCheckout);
+    $('#checkoutFlow').addEventListener('click', event => {
+      if (event.target === $('#checkoutFlow')) closeCheckout();
+    });
+
+    document.querySelectorAll('[data-pf-back]').forEach(button => {
+      button.addEventListener('click', () => showStep(Number(button.dataset.pfBack)));
+    });
+
+    document.querySelectorAll('[data-pf-field]').forEach(input => {
+      input.addEventListener('input', () => {
+        if (input.id === 'pfCep') input.value = formatCep(input.value);
+        if (input.id === 'pfCpf') input.value = formatCpf(input.value);
+        if (input.id === 'pfPhone') input.value = formatPhone(input.value);
+        if (input.id === 'pfState') input.value = input.value.replace(/[^a-z]/gi, '').toUpperCase().slice(0, 2);
+        draft[input.dataset.pfField] = input.value;
+        save(DRAFT_KEY, draft);
+      });
+    });
+
+    $('#pfCep').addEventListener('blur', async () => {
+      const address = await lookupCep($('#pfCep').value);
+      if (!address) return;
+      for (const [key, value] of Object.entries(address)) {
+        const input = document.querySelector(`[data-pf-field="${key}"]`);
+        if (input && !input.value) input.value = value;
+        draft[key] = input?.value || value;
+      }
+      save(DRAFT_KEY, draft);
+    });
+
+    $('#pfEmailForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const input = $('#pfEmail');
+      if (!input.checkValidity()) return input.reportValidity();
+      draft.email = input.value.trim();
+      save(DRAFT_KEY, draft);
+      showStep(2);
+    });
+
+    $('#pfCustomerForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const name = $('#pfName').value.trim();
+      const phone = digits($('#pfPhone').value);
+      const cpf = digits($('#pfCpf').value);
+
+      if (name.length < 3) return $('#pfName').focus();
+      if (phone.length < 10) return $('#pfPhone').focus();
+      if (cpf.length !== 11) return $('#pfCpf').focus();
+
+      Object.assign(draft, {
+        name,
+        phone: $('#pfPhone').value,
+        cpf: $('#pfCpf').value
+      });
+      save(DRAFT_KEY, draft);
+      showStep(3);
+    });
+
+    $('#pfAddressForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const required = ['pfCep', 'pfNumber', 'pfStree

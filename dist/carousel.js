@@ -39,7 +39,8 @@
           .map(item=>({
             name:item.title||'Produto Atletic',
             brand:item.brand||item.category||'Atletic',
-            image:heroImage(item.image_url)
+            image:safeImage(item.image_url),
+            original:true
           }));
       }
     }catch{}
@@ -61,7 +62,7 @@
       <div class="hero-product-stack">
         ${picked.map((product,index)=>`
           <a class="hero-real-product hero-real-product-${index+1}" href="#catalog" title="${escape(product.name)}">
-            <span class="hero-real-product-image"><img src="${escape(product.image)}" alt="${escape(product.name)}" loading="${index===0?'eager':'lazy'}"></span>
+            <span class="hero-real-product-image ${product.original?'original-selected':''}"><img src="${escape(product.image)}" alt="${escape(product.name)}" loading="${index===0?'eager':'lazy'}" decoding="async"></span>
             <span class="hero-real-product-meta"><b>${escape(product.brand)}</b><small>${escape(product.name)}</small></span>
           </a>
         `).join('')}

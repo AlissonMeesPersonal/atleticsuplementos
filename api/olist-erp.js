@@ -62,7 +62,7 @@ function olistError(payload){
   return retorno?.erro||retorno?.mensagem||'A API da Olist retornou um erro.';
 }
 
-async function tinyPost(endpoint,params={}){
+async function tinyPost(endpoint,params={},{allowApiError=false}={}){
   const token=olistToken();
   if(!token)throw new Error('Token do ERP da Olist ainda não configurado na Vercel.');
 
@@ -83,7 +83,8 @@ async function tinyPost(endpoint,params={}){
   const text=await response.text();
   let payload={};
   try{payload=text?JSON.parse(text):{}}catch{throw new Error('Resposta inválida recebida do ERP da Olist.')}
-  if(!response.ok||payload?.retorno?.status==='Erro')throw new Error(olistError(payload));
+  if(!response.ok)throw new Error(olistError(payload));
+  if(payload?.retorno?.status==='Erro'&&!allowApiError)throw new Error(olistError(payload));
   return payload;
 }
 
@@ -153,9 +154,17 @@ async function testConnection(auth){
 }
 
 async function searchProductBySku(sku){
-  const payload=await tinyPost('produtos.pesquisa.php',{pesquisa:sku});
+  const payload=await tinyPost('produtos.pesquisa.php',{pesquisa:sku},{allowApiError:true});
+  if(payload?.retorno?.status==='Erro'){
+    const message=olistError(payload);
+    if(/nenhum|nao encontrado|não encontrado|sem registro|sem registros|registro.*encontrado/i.test(message)){
+      return {payload,product:null,candidates:[],message};
+    }
+    throw new Error(message);
+  }
   const products=(payload?.retorno?.produtos||[]).map(item=>item?.produto||item).filter(Boolean);
-  const exact=products.find(item=>clean(item.codigo).toLowerCase()===clean(sku).toLowerCase());
+  const normalized=clean(sku).toLowerCase();
+  const exact=products.find(item=>clean(item.codigo).toLowerCase()===normalized);
   return {payload,product:exact||null,candidates:products.slice(0,10)};
 }
 
@@ -213,7 +222,15 @@ async function matchCatalog(auth,items=[]){
         externalName:found.product?.nome||null
       });
     }catch(error){
-      results.push({sku:item.sku,status:'error',message:error.message});
+      const message=error.message||'Erro ao consultar SKU.';
+      results.push({sku:item.sku,status:'error',message});
+      await logSync(auth,{
+        direction:'outbound',
+        entityType:'catalog_item',
+        entityKey:item.sku,
+        status:'error',
+        message
+      });
     }
   }
 

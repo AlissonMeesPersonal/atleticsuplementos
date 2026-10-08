@@ -194,21 +194,58 @@
 
   function renderProducts(){
     const term=normalize($('#search').value.trim());
-    let list=products.filter(p=>(category==='Todos'||p.category===category)&&normalize(`${p.name} ${p.detail} ${p.category} ${p.brand} ${p.sku}`).includes(term));
+    const groups=new Map();
+
+    for(const item of products){
+      if(category!=='Todos'&&item.category!==category)continue;
+      if(!groups.has(item.productId))groups.set(item.productId,[]);
+      groups.get(item.productId).push(item);
+    }
+
+    let list=[...groups.values()]
+      .filter(family=>!term||family.some(p=>normalize(`${p.name} ${p.detail} ${p.flavor||''} ${p.size||''} ${p.category} ${p.brand} ${p.sku}`).includes(term)))
+      .map(family=>{
+        const available=family.filter(p=>p.stock>0);
+        const representative=available[0]||family[0];
+        const prices=family.map(p=>Number(p.price||0)).filter(v=>v>0);
+        const minPrice=prices.length?Math.min(...prices):0;
+        const maxPrice=prices.length?Math.max(...prices):0;
+        return {
+          ...representative,
+          family,
+          variantCount:family.length,
+          totalStock:family.reduce((sum,p)=>sum+Math.max(0,Number(p.stock||0)),0),
+          minPrice,
+          maxPrice
+        };
+      });
+
     const sort=$('#sort').value;
-    if(sort==='asc')list.sort((a,b)=>a.price-b.price);
-    if(sort==='desc')list.sort((a,b)=>b.price-a.price);
+    if(sort==='asc')list.sort((a,b)=>a.minPrice-b.minPrice);
+    if(sort==='desc')list.sort((a,b)=>b.minPrice-a.minPrice);
     if(sort==='featured')list.sort((a,b)=>Number(b.featured)-Number(a.featured));
 
     $('#resultCount').textContent=`${list.length} produtos`;
     $('#empty').hidden=!!list.length;
 
-    $('#products').innerHTML=list.map(p=>`
+    $('#products').innerHTML=list.map(p=>{
+      const multiple=p.variantCount>1;
+      const priceLabel=multiple&&p.minPrice>0
+        ? `<small>A partir de</small><strong>${money(p.minPrice)}</strong>`
+        : `${p.comparePrice>p.price&&p.price>0?`<small>${money(p.comparePrice)}</small>`:''}<strong>${displayPrice(p.price)}</strong>`;
+      const detail=multiple
+        ? `${p.variantCount} sabores / variações disponíveis`
+        : (p.detail||'');
+      const stockText=p.totalStock<=0?'Indisponível':(multiple?`${p.totalStock} unidades em estoque`:stockLabel(p));
+      const action=multiple
+        ? `<button class="add product-add" data-view="${escape(p.id)}" ${p.totalStock<=0?'disabled':''} aria-label="Escolher sabor de ${escape(p.name)}"><span>Escolher sabor</span><b>↗</b></button>`
+        : `<button class="add product-add" data-add="${escape(p.id)}" ${p.stock<=0?'disabled':''} aria-label="Adicionar ${escape(p.name)} à sacola"><span>Adicionar</span><b>+</b></button>`;
+      return `
       <article class="product-card">
         <button type="button" class="product-media" data-view="${escape(p.id)}" aria-label="Ver ${escape(p.name)} em detalhes">
           <div class="product-badges">
             ${p.featured?'<span class="product-badge featured">Destaque</span>':''}
-            <span class="product-badge ${p.stock<=0?'soldout':'stock'}">${escape(stockLabel(p))}</span>
+            <span class="product-badge ${p.totalStock<=0?'soldout':'stock'}">${escape(stockText)}</span>
           </div>
           ${visual(p)}
           <span class="product-zoom">Ampliar ↗</span>
@@ -219,19 +256,14 @@
             <span>${escape(p.category)}</span>
           </div>
           <button type="button" class="product-title-button" data-view="${escape(p.id)}"><h3>${escape(p.name)}</h3></button>
-          <p class="product-detail">${escape(p.detail||'')}</p>
+          <p class="product-detail">${escape(detail)}</p>
           <div class="product-card-bottom">
-            <div class="product-price-block">
-              ${p.comparePrice>p.price&&p.price>0?`<small>${money(p.comparePrice)}</small>`:''}
-              <strong>${displayPrice(p.price)}</strong>
-            </div>
-            <button class="add product-add" data-add="${escape(p.id)}" ${p.stock<=0?'disabled':''} aria-label="Adicionar ${escape(p.name)} à sacola">
-              <span>Adicionar</span><b>+</b>
-            </button>
+            <div class="product-price-block">${priceLabel}</div>
+            ${action}
           </div>
         </div>
-      </article>
-    `).join('');
+      </article>`;
+    }).join('');
 
     document.querySelectorAll('#filters button').forEach(b=>{
       b.classList.toggle('active',b.dataset.category===category);

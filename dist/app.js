@@ -121,12 +121,114 @@
     $('#filters').innerHTML=categories.map(c=>`<button data-category="${escape(c)}" class="${c===category?'active':''}">${escape(c)}</button>`).join('');
   }
 
+  function imageUrl(item){
+    if(!item)return'';
+    return typeof item==='string'?item:String(item.url||item.image_url||'');
+  }
+
+  function productImages(product){
+    const urls=(product.images||[]).map(imageUrl).filter(Boolean);
+    if(product.image&&!urls.includes(product.image))urls.unshift(product.image);
+    return [...new Set(urls)];
+  }
+
+  function productDescription(product){
+    const raw=AtleticStore.load().products.find(item=>item.id===product.productId);
+    return String(raw?.description||'').trim();
+  }
+
+  function displayPrice(value){
+    return Number(value||0)>0?money(value):'Preço a definir';
+  }
+
+  function stockLabel(product){
+    if(product.stock<=0)return'Indisponível';
+    if(product.stock<=Math.max(2,product.minStock||0))return'Últimas unidades';
+    return'Em estoque';
+  }
+
+  function openProductView(id){
+    const product=products.find(item=>item.id===id);
+    if(!product)return;
+
+    const images=productImages(product);
+    const main=images[0]||'';
+    const dialog=$('#productView');
+
+    $('#productViewImage').src=main?transparentProductImage(main):'';
+    $('#productViewImage').alt=product.name||'Produto';
+    $('#productViewMeta').textContent=[product.brand,product.category].filter(Boolean).join(' · ');
+    $('#productViewTitle').textContent=product.name||'Produto';
+    $('#productViewDetail').textContent=product.detail||'';
+    $('#productViewDescription').textContent=productDescription(product)||'Produto selecionado pela Atletic Suplementos.';
+    $('#productViewStock').textContent=stockLabel(product);
+    $('#productViewStock').className=`product-view-stock ${product.stock<=0?'out':'in'}`;
+    $('#productViewPrice').textContent=displayPrice(product.price);
+    $('#productViewCompare').textContent=product.comparePrice>product.price&&product.price>0?money(product.comparePrice):'';
+    $('#productViewBrand').textContent=product.brand||'—';
+    $('#productViewCategory').textContent=product.category||'—';
+    $('#productViewSku').textContent=product.sku||'—';
+
+    const add=$('#productViewAdd');
+    add.dataset.add=product.id;
+    add.disabled=product.stock<=0;
+    add.innerHTML=product.stock<=0?'Indisponível':'Adicionar à sacola <span>+</span>';
+
+    $('#productViewThumbs').innerHTML=images.length>1?images.map((url,index)=>`
+      <button type="button" class="product-view-thumb ${index===0?'active':''}" data-view-image="${escape(url)}" aria-label="Ver imagem ${index+1}">
+        <img src="${escape(transparentProductImage(url))}" alt="">
+      </button>
+    `).join(''):'';
+
+    dialog.showModal();
+    document.body.style.overflow='hidden';
+  }
+
   function renderProducts(){
-    const term=normalize($('#search').value.trim()); let list=products.filter(p=>(category==='Todos'||p.category===category)&&normalize(`${p.name} ${p.detail} ${p.category} ${p.brand} ${p.sku}`).includes(term));
-    const sort=$('#sort').value; if(sort==='asc')list.sort((a,b)=>a.price-b.price);if(sort==='desc')list.sort((a,b)=>b.price-a.price);if(sort==='featured')list.sort((a,b)=>Number(b.featured)-Number(a.featured));
-    $('#resultCount').textContent=`${list.length} produtos`;$('#empty').hidden=!!list.length;
-    $('#products').innerHTML=list.map(p=>`<article class="product"><div class="product-art"><span class="tag">${p.stock<=0?'Indisponível':p.featured?'Em destaque':escape(p.brand||p.category)}</span>${visual(p)}</div><p class="type">${escape(p.category)}</p><h3>${escape(p.name)}</h3><p class="detail">${escape(p.detail)}</p><div class="buy-row"><div>${p.comparePrice>p.price?`<small style="display:block;text-decoration:line-through;color:var(--muted)">${money(p.comparePrice)}</small>`:''}<span class="price">${money(p.price)}</span></div><button class="add" data-add="${escape(p.id)}" ${p.stock<=0?'disabled':''} aria-label="Adicionar ${escape(p.name)} ${escape(p.detail)} ao carrinho">+</button></div></article>`).join('');
-    document.querySelectorAll('#filters button').forEach(b=>{b.classList.toggle('active',b.dataset.category===category);b.setAttribute('aria-pressed',String(b.dataset.category===category))});
+    const term=normalize($('#search').value.trim());
+    let list=products.filter(p=>(category==='Todos'||p.category===category)&&normalize(`${p.name} ${p.detail} ${p.category} ${p.brand} ${p.sku}`).includes(term));
+    const sort=$('#sort').value;
+    if(sort==='asc')list.sort((a,b)=>a.price-b.price);
+    if(sort==='desc')list.sort((a,b)=>b.price-a.price);
+    if(sort==='featured')list.sort((a,b)=>Number(b.featured)-Number(a.featured));
+
+    $('#resultCount').textContent=`${list.length} produtos`;
+    $('#empty').hidden=!!list.length;
+
+    $('#products').innerHTML=list.map(p=>`
+      <article class="product-card">
+        <button type="button" class="product-media" data-view="${escape(p.id)}" aria-label="Ver ${escape(p.name)} em detalhes">
+          <div class="product-badges">
+            ${p.featured?'<span class="product-badge featured">Destaque</span>':''}
+            <span class="product-badge ${p.stock<=0?'soldout':'stock'}">${escape(stockLabel(p))}</span>
+          </div>
+          ${visual(p)}
+          <span class="product-zoom">Ampliar ↗</span>
+        </button>
+        <div class="product-card-body">
+          <div class="product-brand-row">
+            <span>${escape(p.brand||p.category)}</span>
+            <span>${escape(p.category)}</span>
+          </div>
+          <button type="button" class="product-title-button" data-view="${escape(p.id)}"><h3>${escape(p.name)}</h3></button>
+          <p class="product-detail">${escape(p.detail||'')}</p>
+          <div class="product-card-bottom">
+            <div class="product-price-block">
+              ${p.comparePrice>p.price&&p.price>0?`<small>${money(p.comparePrice)}</small>`:''}
+              <strong>${displayPrice(p.price)}</strong>
+            </div>
+            <button class="add product-add" data-add="${escape(p.id)}" ${p.stock<=0?'disabled':''} aria-label="Adicionar ${escape(p.name)} à sacola">
+              <span>Adicionar</span><b>+</b>
+            </button>
+          </div>
+        </div>
+      </article>
+    `).join('');
+
+    document.querySelectorAll('#filters button').forEach(b=>{
+      b.classList.toggle('active',b.dataset.category===category);
+      b.setAttribute('aria-pressed',String(b.dataset.category===category));
+    });
   }
 
   function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),2500)}
@@ -175,6 +277,11 @@
 
   document.addEventListener('click',e=>{
     const c=e.target.closest('[data-category]');if(c){category=c.dataset.category;renderProducts();if(c.closest('#mainNav'))setMobileMenu(false);if(c.closest('#categories'))$('#catalog').scrollIntoView({behavior:'smooth'})}
+    const view=e.target.closest('[data-view]');if(view){openProductView(view.dataset.view)}
+    const thumb=e.target.closest('[data-view-image]');if(thumb){
+      $('#productViewImage').src=transparentProductImage(thumb.dataset.viewImage);
+      document.querySelectorAll('.product-view-thumb').forEach(item=>item.classList.toggle('active',item===thumb));
+    }
     const a=e.target.closest('[data-add]');if(a&&!a.disabled){const p=cartProduct(a.dataset.add);if(!p||p.stock<=0)return;cart[p.id]=Math.min((cart[p.id]||0)+1,p.stock,99);renderCart();toast('Produto adicionado à sacola')}
     const q=e.target.closest('[data-qty]');if(q){const p=cartProduct(q.dataset.qty);if(!p)return;const next=Math.min((cart[p.id]||0)+Number(q.dataset.change),p.stock,99);if(next<=0)delete cart[p.id];else cart[p.id]=next;renderCart()}
     const r=e.target.closest('[data-remove]');if(r){delete cart[r.dataset.remove];renderCart()}
@@ -182,6 +289,9 @@
 
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&mainNav?.classList.contains('open'))setMobileMenu(false)});
   $('#search').addEventListener('input',renderProducts);$('#searchForm').onsubmit=e=>{e.preventDefault();$('#catalog').scrollIntoView({behavior:'smooth'})};$('#sort').onchange=renderProducts;
+  $('#productViewClose').onclick=()=>$('#productView').close();
+  $('#productView').addEventListener('close',()=>{document.body.style.overflow=''});
+  $('#productView').addEventListener('click',e=>{if(e.target===$('#productView'))$('#productView').close()});
   $('#cartOpen').onclick=()=>{$('#cart').showModal();document.body.style.overflow='hidden'};function closeCart(){$('#cart').close()}$('#cartClose').onclick=closeCart;$('#cart').addEventListener('close',()=>{document.body.style.overflow='';$('#cartOpen').focus()});
   $('#couponForm').onsubmit=e=>{e.preventDefault();const code=$('#coupon').value.trim().toUpperCase();const found=AtleticStore.load().coupons.find(c=>c.code===code&&c.active);if(found){activeCoupon=found.code;renderCart()}else $('#couponMessage').textContent='Cupom não encontrado ou inativo.'};
   $('#removeCoupon').onclick=()=>{activeCoupon=null;renderCart()};

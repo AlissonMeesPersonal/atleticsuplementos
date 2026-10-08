@@ -4,8 +4,8 @@
   const uid = prefix => `${prefix}-${crypto.randomUUID()}`;
   const initial = {
     brands: [
-      { id: 'brand-atletic', name: 'Atletic', active: true },
-      { id: 'brand-demo', name: 'Marca demonstrativa', active: true }
+      { id: 'brand-atletic', name: 'DUX Nutrition', active: true },
+      { id: 'brand-demo', name: 'Evolve', active: true }
     ],
     categories: [
       { id: 'cat-proteinas', name: 'Proteínas', slug: 'proteinas', active: true },
@@ -15,9 +15,9 @@
       { id: 'cat-acessorios', name: 'Acessórios', slug: 'acessorios', active: true }
     ],
     products: [
-      { id: 'prod-whey', name: 'Whey Protein Concentrado', brandId: 'brand-atletic', categoryId: 'cat-proteinas', description: 'Produto demonstrativo para validação da plataforma.', active: true, featured: true, images: [] },
-      { id: 'prod-creatina', name: 'Creatina Monohidratada', brandId: 'brand-atletic', categoryId: 'cat-creatinas', description: 'Produto demonstrativo para validação da plataforma.', active: true, featured: true, images: [] },
-      { id: 'prod-pre', name: 'Pré-treino Energy', brandId: 'brand-demo', categoryId: 'cat-pre', description: 'Produto demonstrativo para validação da plataforma.', active: true, featured: false, images: [] }
+      { id: 'prod-whey', name: 'Whey Protein Concentrado', brandId: 'brand-atletic', categoryId: 'cat-proteinas', description: 'Produto demonstrativo para validação da plataforma.', active: true, featured: true, images: [{ url: '/assets/products/22_Whey_Protein_Concentrado_900g_DUX_Nutrition.png?v=20261008-1' }] },
+      { id: 'prod-creatina', name: 'Creatina Monohidratada', brandId: 'brand-atletic', categoryId: 'cat-creatinas', description: 'Produto demonstrativo para validação da plataforma.', active: true, featured: true, images: [{ url: '/assets/products/08_Creatina_Monohidratada_300g_DUX_Nutrition.png?v=20261008-1' }] },
+      { id: 'prod-pre', name: 'Pré-treino Energy', brandId: 'brand-demo', categoryId: 'cat-pre', description: 'Produto demonstrativo para validação da plataforma.', active: true, featured: false, images: [{ url: '/assets/products/16_Pre_Workout_150g_Evolve.png?v=20261008-1' }] }
     ],
     variants: [
       { id: 'var-whey-choc', productId: 'prod-whey', sku: 'ATL-WHEY-900-CHO', barcode: '', flavor: 'Chocolate', size: '900 g', price: 12990, comparePrice: 14990, cost: 7600, minStock: 5, active: true },
@@ -39,16 +39,47 @@
     orders: []
   };
 
+  const legacyProductImages = {
+    'prod-whey': '/assets/products/22_Whey_Protein_Concentrado_900g_DUX_Nutrition.png?v=20261008-1',
+    'prod-creatina': '/assets/products/08_Creatina_Monohidratada_300g_DUX_Nutrition.png?v=20261008-1',
+    'prod-pre': '/assets/products/16_Pre_Workout_150g_Evolve.png?v=20261008-1'
+  };
+
+  function refreshLegacyDemo(data) {
+    const productIds = new Set((data.products || []).map(item => item.id));
+    const isLegacyDemo = ['prod-whey','prod-creatina','prod-pre'].every(id => productIds.has(id));
+    if (!isLegacyDemo) return data;
+
+    data.products = data.products.map(product => {
+      const image = legacyProductImages[product.id];
+      if (!image) return product;
+      return { ...product, images: [{ url: image }] };
+    });
+
+    data.brands = data.brands.map(brand => {
+      if (brand.id === 'brand-atletic' && (brand.name === 'Atletic' || !brand.name)) return { ...brand, name: 'DUX Nutrition' };
+      if (brand.id === 'brand-demo' && (brand.name === 'Marca demonstrativa' || !brand.name)) return { ...brand, name: 'Evolve' };
+      return brand;
+    });
+
+    return data;
+  }
+
   function normalize(data) {
     const base = clone(initial);
     if (!data || typeof data !== 'object') return base;
     for (const key of Object.keys(base)) if (Array.isArray(data[key])) base[key] = data[key];
-    return base;
+    return refreshLegacyDemo(base);
   }
 
   function load() {
-    try { return normalize(JSON.parse(localStorage.getItem(KEY))); }
-    catch { return clone(initial); }
+    try {
+      const normalized = normalize(JSON.parse(localStorage.getItem(KEY)));
+      localStorage.setItem(KEY, JSON.stringify(normalized));
+      return normalized;
+    } catch {
+      return clone(initial);
+    }
   }
 
   function save(data) {

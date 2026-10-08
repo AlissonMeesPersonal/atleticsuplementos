@@ -14,14 +14,47 @@
         : safe;
     }catch{return safe}
   };
-  const categoryFallbackImages={
-    'Proteínas':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93289184/39-21kkx9jcvb.png',
-    'Creatinas':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93310863/3-nv15p3rp0o.png',
-    'Pré-treinos':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/231959625/1-ojjc2l2hrt.png',
-    'Vitaminas':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/214409068/3-yeeorxhtyq.png',
-    'Acessórios':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/229218979/8-qhfqvibhgb.png',
-    'Barras':'https://cdn.awsli.com.br/800x800/1361/1361851/produto/353752094/d_nq_np_2x_697324-mla96155280493_102025-f-d5a4cx9zl3.webp'
+  const categoryFallbackImages = {
+    'Proteínas': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/92601117/1-q6ujxwv8d7.png',
+    'Creatinas': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/93310863/3-nv15p3rp0o.png',
+    'Pré-treinos': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/231959625/1-ojjc2l2hrt.png',
+    'Vitaminas': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/214409068/3-yeeorxhtyq.png',
+    'Acessórios': 'https://cdn.awsli.com.br/800x800/1361/1361851/produto/229218979/8-qhfqvibhgb.png'
   };
+
+  const blockedCategoryImages = new Set([
+    // bloqueie aqui imagens que ficaram feias nessa área
+    'https://cdn.awsli.com.br/800x800/1361/1361851/produto/343299218/shark-divwyr75sy.png',
+    'https://cdn.awsli.com.br/800x800/1361/1361851/produto/214409068/3-yeeorxhtyq.png?bad',
+  ]);
+
+  function isGoodCategoryImage(value = '') {
+    const url = safeImage(value);
+    if (!url) return false;
+    if (blockedCategoryImages.has(url)) return false;
+    return true;
+  }
+
+  function pickCategoryProduct(categoryName) {
+    const candidates = products
+      .filter(p => p.category === categoryName && safeImage(p.image))
+      .filter(p => isGoodCategoryImage(p.image));
+
+    if (!candidates.length) return null;
+
+    const score = product => {
+      const img = String(product.image || '');
+      let points = 0;
+
+      if (/\.(png|webp)(\?|$)/i.test(img)) points += 4;
+      if (/max titanium|integralmedica|dux|evolve/i.test(product.name || '')) points += 2;
+      if (/barra|capsulas/i.test(product.name || '')) points -= 1;
+
+      return points;
+    };
+
+    return [...candidates].sort((a, b) => score(b) - score(a))[0];
+  }
   function read(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}}
   function save(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
 
@@ -67,9 +100,17 @@
     if(!categories.includes(category))category='Todos';
 
     const categoryVisual = categoryName => {
-      const realProduct=products.find(p=>p.category===categoryName&&safeImage(p.image));
-      const source=realProduct?.image||categoryFallbackImages[categoryName]||'';
-      if(!source)return bottle(products.find(p=>p.category===categoryName)||products[0]||{name:categoryName,category:categoryName,detail:''});
+      const realProduct = pickCategoryProduct(categoryName);
+      const source = realProduct?.image || categoryFallbackImages[categoryName] || '';
+
+      if (!source) {
+        return bottle(
+          products.find(p => p.category === categoryName) ||
+          products[0] ||
+          { name: categoryName, category: categoryName, detail: '' }
+        );
+      }
+
       return `<img class="category-product-image" src="${escape(cutoutImage(source))}" alt="" loading="lazy">`;
     };
 

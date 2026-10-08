@@ -236,7 +236,10 @@
           <h2>Biblioteca de imagens</h2>
           <p class="muted">Imagens importadas do site atual e imagens escolhidas nas buscas da internet.</p>
         </div>
-        <button id="libraryImport" class="button">Importar / atualizar site atual</button>
+        <div class="library-actions">
+          <a class="button secondary" href="/api/export-original-images" download="atletic-imagens-originais-800x800.zip">Baixar originais (ZIP)</a>
+          <button id="libraryImport" class="button">Importar / atualizar site atual</button>
+        </div>
       </div>
       <div class="admin-toolbar">
         <input id="librarySearch" type="search" placeholder="Buscar por produto, marca ou categoria" aria-label="Buscar imagens">

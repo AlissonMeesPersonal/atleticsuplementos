@@ -172,4 +172,165 @@
     if (panel && options) {
       panel.hidden = family.length === 0;
       options.innerHTML = family.map(item => `
-        <button type="button" class="pf-variant-option" d
+        <button type="button" class="pf-variant-option" data-pf-variant="${item.id}" aria-pressed="${item.id === id ? 'true' : 'false'}">
+          ${flavorLabel(item)}
+        </button>
+      `).join('');
+    }
+
+    applyVariant(id);
+  }
+
+  function ensureCartShipping() {
+    const bottom = $('.cart-bottom');
+    if (!bottom || $('#shippingForm')) return;
+
+    bottom.insertAdjacentHTML('afterbegin', `
+      <form id="shippingForm" class="pf-shipping-form">
+        <label for="shippingCep">Calcular entrega</label>
+        <div class="coupon-row">
+          <input id="shippingCep" inputmode="numeric" autocomplete="postal-code" placeholder="Digite seu CEP" maxlength="9">
+          <button class="button" type="submit">Usar CEP</button>
+        </div>
+      </form>
+      <p id="shippingMessage" class="pf-helper" aria-live="polite">Informe seu CEP para agilizar o checkout.</p>
+    `);
+
+    const input = $('#shippingCep');
+    if (input) input.value = formatCep(draft.cep || '');
+
+    $('#shippingForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const cep = formatCep(input.value);
+      if (digits(cep).length !== 8) {
+        $('#shippingMessage').textContent = 'Digite um CEP válido com 8 números.';
+        return;
+      }
+
+      input.value = cep;
+      draft.cep = cep;
+      save(DRAFT_KEY, draft);
+      $('#shippingMessage').textContent = 'CEP salvo. Buscando endereço…';
+
+      const address = await lookupCep(cep);
+      if (address) {
+        Object.assign(draft, address, { cep });
+        save(DRAFT_KEY, draft);
+        $('#shippingMessage').textContent = `${address.street || 'Endereço'} · ${address.city}/${address.state}`;
+      } else {
+        $('#shippingMessage').textContent = 'CEP salvo. Você poderá completar o endereço no checkout.';
+      }
+    });
+
+    input?.addEventListener('input', event => {
+      event.target.value = formatCep(event.target.value);
+    });
+  }
+
+  function formatCep(value) {
+    const valueDigits = digits(value).slice(0, 8);
+    return valueDigits.length > 5 ? `${valueDigits.slice(0, 5)}-${valueDigits.slice(5)}` : valueDigits;
+  }
+
+  function formatCpf(value) {
+    const valueDigits = digits(value).slice(0, 11);
+    return valueDigits
+      .replace(/^(\d{3})(\d)/, '$1.$2')
+      .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1-$2');
+  }
+
+  function formatPhone(value) {
+    const valueDigits = digits(value).slice(0, 11);
+    if (valueDigits.length <= 10) {
+      return valueDigits
+        .replace(/^(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{4})(\d)/, '$1-$2');
+    }
+    return valueDigits
+      .replace(/^(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{5})(\d)/, '$1-$2');
+  }
+
+  async function lookupCep(value) {
+    const cep = digits(value);
+    if (cep.length !== 8) return null;
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const payload = await response.json();
+      if (!response.ok || payload.erro) return null;
+      return {
+        street: payload.logradouro || '',
+        district: payload.bairro || '',
+        city: payload.localidade || '',
+        state: payload.uf || ''
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function totals() {
+    const currentCart = cart();
+    const items = Object.entries(currentCart).map(([id, qty]) => {
+      const product = catalog().find(item => item.id === id);
+      return product ? { product, qty: Number(qty || 0) } : null;
+    }).filter(Boolean);
+
+    const count = items.reduce((sum, item) => sum + item.qty, 0);
+    const subtotal = items.reduce((sum, item) => sum + item.product.price * item.qty, 0);
+    const couponCode = read(COUPON_KEY, null);
+    const coupon = store().coupons.find(item => item.code === couponCode && item.active);
+    let discount = 0;
+
+    if (coupon && subtotal >= Number(coupon.minimum || 0)) {
+      discount = coupon.kind === 'fixed'
+        ? Math.min(Number(coupon.amount || 0), subtotal)
+        : Math.round(subtotal * Number(coupon.amount || 0) / 100);
+    }
+
+    return { items, count, subtotal, discount, total: subtotal - discount };
+  }
+
+  function ensureCheckout() {
+    if ($('#checkoutFlow')) return;
+
+    document.body.insertAdjacentHTML('beforeend', `
+      <dialog id="checkoutFlow" class="pf-checkout" aria-labelledby="checkoutTitle">
+        <div class="pf-checkout-shell">
+          <header class="pf-checkout-head">
+            <div>
+              <p class="eyebrow">CHECKOUT RÁPIDO</p>
+              <h2 id="checkoutTitle">Finalize sua compra</h2>
+            </div>
+            <button id="checkoutClose" type="button" aria-label="Fechar checkout">×</button>
+          </header>
+
+          <div class="pf-progress" aria-label="Etapas do checkout">
+            <span data-pf-progress="1" class="active"><b>1</b><small>E-mail</small></span>
+            <i></i>
+            <span data-pf-progress="2"><b>2</b><small>Dados</small></span>
+            <i></i>
+            <span data-pf-progress="3"><b>3</b><small>Entrega</small></span>
+          </div>
+
+          <section class="pf-step active" data-pf-step="1">
+            <p class="pf-step-title">Qual é o seu e-mail?</p>
+            <form id="pfEmailForm" class="pf-form">
+              <label>E-mail
+                <input id="pfEmail" data-pf-field="email" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" required>
+              </label>
+              <button class="button" type="submit">Continuar <span>↗</span></button>
+            </form>
+          </section>
+
+          <section class="pf-step" data-pf-step="2">
+            <p class="pf-step-title">Seus dados</p>
+            <form id="pfCustomerForm" class="pf-form">
+              <label>Nome completo
+                <input id="pfName" data-pf-field="name" autocomplete="name" placeholder="Nome e sobrenome" required>
+              </label>
+              <div class="pf-grid-two">
+                <label>WhatsApp
+                  <input id="pfPhone" data-pf-field="phone" inputmode="tel" autocomplete="tel" 

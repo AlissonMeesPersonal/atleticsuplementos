@@ -79,11 +79,11 @@ export default async function handler(req, res) {
       if (y + 1 < height) pushIfBackground(index + width);
     }
 
-    // Mantém somente o maior objeto conectado: o produto principal.
-    // Isso remove selos, logos e marcas d'água que ficam separados da embalagem.
+    // Mantém o produto principal e partes relevantes próximas dele.
+    // Remove somente componentes pequenos e isolados, como selos e marcas d'água.
     const foregroundVisited = new Uint8Array(width * height);
     const componentQueue = new Int32Array(width * height);
-    let largest = [];
+    const components = [];
 
     const isForeground = index => {
       const offset = index * channels;
@@ -95,15 +95,23 @@ export default async function handler(req, res) {
 
       let componentHead = 0;
       let componentTail = 0;
-      const component = [];
+      const pixels = [];
+      let minX = width, minY = height, maxX = -1, maxY = -1;
+
       foregroundVisited[start] = 1;
       componentQueue[componentTail++] = start;
 
       while (componentHead < componentTail) {
         const index = componentQueue[componentHead++];
-        component.push(index);
+        pixels.push(index);
+
         const x = index % width;
         const y = Math.floor(index / width);
+
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
 
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -111,38 +119,97 @@ export default async function handler(req, res) {
             const nx = x + dx;
             const ny = y + dy;
             if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
             const next = ny * width + nx;
             if (foregroundVisited[next] || !isForeground(next)) continue;
+
             foregroundVisited[next] = 1;
             componentQueue[componentTail++] = next;
           }
         }
       }
 
-      if (component.length > largest.length) largest = component;
+      components.push({
+        pixels,
+        area: pixels.length,
+        minX,
+        minY,
+        maxX,
+        maxY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+      });
     }
 
+    if (!components.length) {
+      return res.status(422).send('Produto não identificado na imagem.');
+    }
+
+    components.sort((a, b) => b.area - a.area);
+    const main = components[0];
+
+    const expand = Math.round(Math.max(main.width, main.height) * 0.16);
+    const expanded = {
+      left: Math.max(0, main.minX - expand),
+      top: Math.max(0, main.minY - expand),
+      right: Math.min(width - 1, main.maxX + expand),
+      bottom: Math.min(height - 1, main.maxY + expand)
+    };
+
+    const overlapsMain = component =>
+      !(component.maxX < expanded.left ||
+        component.minX > expanded.right ||
+        component.maxY < expanded.top ||
+        component.minY > expanded.bottom);
+
+    const keepComponents = components.filter((component, index) => {
+      if (index === 0) return true;
+
+      const relativeArea = component.area / main.area;
+      const relativeWidth = component.width / main.width;
+      const relativeHeight = component.height / main.height;
+
+      // Mantém partes importantes do produto que ficaram separadas
+      // após a remoção do fundo (tampa, rótulo, alça, bordas etc.).
+      if (overlapsMain(component) && relativeArea >= 0.006) return true;
+      if (relativeArea >= 0.08) return true;
+      if (relativeWidth >= 0.32 && relativeHeight >= 0.12) return true;
+
+      return false;
+    });
+
     const keep = new Uint8Array(width * height);
-    for (const index of largest) keep[index] = 1;
+    for (const component of keepComponents) {
+      for (const index of component.pixels) keep[index] = 1;
+    }
 
     let minX = width, minY = height, maxX = -1, maxY = -1;
     for (let index = 0; index < width * height; index++) {
       const offset = index * channels;
+
       if (!keep[index]) {
         data[offset + 3] = 0;
         continue;
       }
+
       const x = index % width;
       const y = Math.floor(index / width);
+
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
 
-    if (maxX < minX || maxY < minY) return res.status(422).send('Produto não identificado na imagem.');
+    if (maxX < minX || maxY < minY) {
+      return res.status(422).send('Produto não identificado na imagem.');
+    }
 
-    const padding = Math.max(10, Math.round(Math.max(maxX - minX, maxY - minY) * 0.04));
+    const padding = Math.max(
+      18,
+      Math.round(Math.max(maxX - minX, maxY - minY) * 0.08)
+    );
+
     const left = Math.max(0, minX - padding);
     const top = Math.max(0, minY - padding);
     const right = Math.min(width - 1, maxX + padding);

@@ -157,7 +157,7 @@ async function searchProductBySku(sku){
   const payload=await tinyPost('produtos.pesquisa.php',{pesquisa:sku},{allowApiError:true});
   if(payload?.retorno?.status==='Erro'){
     const message=olistError(payload);
-    if(/nenhum|nao encontrado|não encontrado|sem registro|sem registros|registro.*encontrado/i.test(message)){
+    if(/nenhum|nao encontrado|não encontrado|sem registro|sem registros|registro.*encontrado|consulta.*nao retornou registros|consulta.*não retornou registros|nao retornou registros|não retornou registros/i.test(message)){
       return {payload,product:null,candidates:[],message};
     }
     throw new Error(message);

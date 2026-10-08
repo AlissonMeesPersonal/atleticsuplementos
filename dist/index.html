@@ -30,11 +30,39 @@
   </div>
 </div>
 <section class="categories wrap"><div class="section-top"><div><p class="eyebrow">ENCONTRE SEU ESSENCIAL</p><h2>Uma rotina. Muitas possibilidades.</h2></div><a href="#catalog" data-category="Todos">Ver tudo ↗</a></div><div id="categories"></div></section>
-<section id="catalog" class="wrap catalog"><div class="section-top"><div><p class="eyebrow">ESCOLHAS PARA O SEU TREINO</p><h2>Abasteça sua evolução<span class="orange">.</span></h2></div><select id="sort" aria-label="Ordenar produtos"><option value="featured">Em destaque</option><option value="asc">Menor preço</option><option value="desc">Maior preço</option></select></div><div class="catalog-tools"><div id="filters"></div><span id="resultCount"></span></div><p class="demo-note">Prévia da loja • catálogo e estoque compartilhados com o administrativo deste navegador.</p><div id="products" class="products"></div><p id="empty" hidden>Nenhum produto encontrado. Tente outro nome ou categoria.</p></section>
+<section id="catalog" class="wrap catalog"><div class="section-top"><div><p class="eyebrow">ESCOLHAS PARA O SEU TREINO</p><h2>Abasteça sua evolução<span class="orange">.</span></h2></div><select id="sort" aria-label="Ordenar produtos"><option value="featured">Em destaque</option><option value="asc">Menor preço</option><option value="desc">Maior preço</option></select></div><div class="catalog-tools"><div id="filters"></div><span id="resultCount"></span></div><p class="catalog-hint">Clique em um produto para ampliar a imagem e ver os detalhes.</p><div id="products" class="products"></div><p id="empty" hidden>Nenhum produto encontrado. Tente outro nome ou categoria.</p></section>
 <section id="combos" class="wrap promo"><div><p class="eyebrow">O BÁSICO BEM FEITO.</p><h2>SEU TREINO<br>PEDE <em>CONSTÂNCIA.</em></h2><p>Proteínas, creatinas e acessórios.<br>Explore os essenciais para montar sua rotina.</p><a href="#catalog" data-category="Todos" class="button">Encontrar meus essenciais ↗</a></div><div class="promo-type">FOCO.<br>ROTINA.<br><span>ATLETIC.</span></div></section>
 <section class="wrap benefits"><div><b>01</b><h3>Escolha com facilidade</h3><p>Busque por categoria e encontre seus essenciais.</p></div><div><b>02</b><h3>Estoque integrado</h3><p>A disponibilidade acompanha os movimentos do administrativo.</p></div><div><b>03</b><h3>Campanhas dinâmicas</h3><p>Banners e parceiros são controlados pela central de gestão.</p></div></section>
 </main>
 <footer><img class="logo" src="assets/logo.svg" alt="Atletic Suplementos"><p>Seu próximo nível começa com você.</p><a href="#catalog">Explorar catálogo ↗</a><div class="footer-bottom">© <span id="year"></span> Atletic Suplementos.<span>Prévia de desenvolvimento · checkout real ainda não habilitado</span></div></footer>
+<dialog id="productView" class="product-view-dialog" aria-labelledby="productViewTitle">
+  <button id="productViewClose" class="product-view-close" type="button" aria-label="Fechar">×</button>
+  <div class="product-view-grid">
+    <div class="product-view-gallery">
+      <div class="product-view-main"><img id="productViewImage" alt=""></div>
+      <div id="productViewThumbs" class="product-view-thumbs"></div>
+    </div>
+    <div class="product-view-info">
+      <p id="productViewMeta" class="product-view-meta"></p>
+      <h2 id="productViewTitle"></h2>
+      <p id="productViewDetail" class="product-view-detail"></p>
+      <p id="productViewDescription" class="product-view-description"></p>
+      <div class="product-view-stock" id="productViewStock"></div>
+      <div class="product-view-price-row">
+        <div>
+          <small id="productViewCompare" class="product-view-compare"></small>
+          <strong id="productViewPrice"></strong>
+        </div>
+        <button id="productViewAdd" class="button product-view-add" type="button">Adicionar à sacola <span>+</span></button>
+      </div>
+      <dl class="product-view-specs">
+        <div><dt>Marca</dt><dd id="productViewBrand"></dd></div>
+        <div><dt>Categoria</dt><dd id="productViewCategory"></dd></div>
+        <div><dt>SKU</dt><dd id="productViewSku"></dd></div>
+      </dl>
+    </div>
+  </div>
+</dialog>
 <dialog id="cart"><div class="drawer-head"><div><p class="eyebrow">SUAS ESCOLHAS</p><h2>Minha sacola <span id="drawerCount">0</span></h2></div><button id="cartClose" aria-label="Fechar carrinho">×</button></div><div id="cartItems"></div><div class="cart-bottom"><form id="couponForm"><label for="coupon">Tem um cupom?</label><div class="coupon-row"><input id="coupon" placeholder="Digite seu cupom" maxlength="30"><button class="button">Aplicar</button></div></form><p id="couponMessage" aria-live="polite">Digite um cupom válido cadastrado pela loja.</p><div class="total-row"><span>Subtotal</span><strong id="subtotal"></strong></div><div class="total-row"><span>Desconto <button id="removeCoupon" hidden aria-label="Remover cupom">×</button></span><strong id="discount"></strong></div><div class="total-row"><span>Entrega</span><span>A definir no checkout</span></div><div class="total-row grand"><span>Total dos produtos</span><strong id="total"></strong></div><button id="checkout" class="button checkout">Continuar compra ↗</button><p class="demo-note">Nenhum pedido ou cobrança será realizado nesta etapa.</p><p id="checkoutMessage" role="status"></p></div></dialog>
 <nav class="mobile-bottom-nav" aria-label="Navegação rápida">
   <a href="#" aria-label="Início"><span aria-hidden="true">⌂</span><small>Início</small></a>

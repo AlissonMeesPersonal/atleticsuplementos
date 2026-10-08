@@ -254,6 +254,196 @@ async function matchCatalog(auth,items=[]){
   return {summary,results};
 }
 
+function groupCatalogItems(items=[]){
+  const groups=new Map();
+  for(const raw of Array.isArray(items)?items:[]){
+    const item={
+      productKey:clean(raw?.productKey)||clean(raw?.name),
+      name:clean(raw?.name),
+      brand:clean(raw?.brand),
+      category:clean(raw?.category),
+      description:clean(raw?.description),
+      imageUrl:clean(raw?.imageUrl),
+      sku:clean(raw?.sku),
+      flavor:clean(raw?.flavor),
+      size:clean(raw?.size),
+      barcode:clean(raw?.barcode),
+      price:num(raw?.price),
+      cost:num(raw?.cost),
+      stock:Math.max(0,num(raw?.stock)),
+      minStock:Math.max(0,num(raw?.minStock))
+    };
+    if(!item.name||!item.sku)continue;
+    const key=item.productKey||item.name;
+    if(!groups.has(key))groups.set(key,{key,name:item.name,brand:item.brand,category:item.category,description:item.description,imageUrl:item.imageUrl,variants:[]});
+    groups.get(key).variants.push(item);
+  }
+  return [...groups.values()];
+}
+
+function productIncludePayload(group,{origin='0',unit='UN'}={}){
+  const variants=group.variants;
+  if(!variants.length)throw new Error('Produto sem variações para enviar.');
+  const base=variants[0];
+  const parentPrice=(base.price/100).toFixed(2);
+  const product={
+    sequencia:'1',
+    nome:group.name.slice(0,120),
+    unidade:clean(unit).slice(0,3)||'UN',
+    preco:parentPrice,
+    origem:clean(origin)||'0',
+    situacao:'A',
+    tipo:'P',
+    classe_produto:'V',
+    marca:group.brand||undefined,
+    categoria:group.category||undefined,
+    descricao_complementar:group.description||undefined,
+    preco_custo:base.cost>0?(base.cost/100).toFixed(2):undefined,
+    estoque_minimo:String(base.minStock||0),
+    imagens_externas:group.imageUrl?[{imagem_externa:{url:group.imageUrl}}]:undefined,
+    variacoes:variants.map(variant=>({
+      variacao:{
+        codigo:variant.sku.slice(0,60),
+        preco:(variant.price/100).toFixed(2),
+        estoque_atual:variant.stock,
+        grade:{
+          ...(variant.size?{Tamanho:variant.size}:{}),
+          Sabor:variant.flavor||'Padrão'
+        }
+      }
+    }))
+  };
+  Object.keys(product).forEach(key=>product[key]===undefined&&delete product[key]);
+  return {produtos:[{produto:product}]};
+}
+
+function recordErrors(record){
+  const list=record?.erros;
+  if(!Array.isArray(list))return [];
+  return list.map(item=>typeof item==='string'?item:(item?.erro||item?.mensagem||'')).filter(Boolean);
+}
+
+async function createProductGroup(auth,group,options={}){
+  const checks=[];
+  for(const variant of group.variants){
+    const found=await searchProductBySku(variant.sku);
+    checks.push({variant,found});
+  }
+
+  const matched=checks.filter(item=>item.found.product);
+  if(matched.length===group.variants.length){
+    for(const item of matched)await upsertMapping(auth,item.variant,item.found);
+    return {status:'already_exists',name:group.name,created:0,matched:matched.length,skipped:0};
+  }
+  if(matched.length>0){
+    return {
+      status:'partial_existing',
+      name:group.name,
+      created:0,
+      matched:matched.length,
+      skipped:group.variants.length-matched.length,
+      message:'Alguns sabores já existem no ERP. Cadastro automático bloqueado para evitar duplicidade do produto pai.'
+    };
+  }
+
+  const request=productIncludePayload(group,options);
+  const response=await tinyPost('produto.incluir.php',{produto:request},{allowApiError:true});
+  const retorno=response?.retorno||{};
+  const rawRecords=retorno?.registros||[];
+  const firstRecord=Array.isArray(rawRecords)?(rawRecords[0]?.registro||rawRecords[0]):(rawRecords?.registro||rawRecords);
+  const errors=[
+    ...(retorno.status==='Erro'?(retorno.erros||[]).map(item=>item?.erro||item).filter(Boolean):[]),
+    ...recordErrors(firstRecord)
+  ];
+
+  if(retorno.status==='Erro'||firstRecord?.status==='Erro'){
+    throw new Error(errors.join(' · ')||olistError(response));
+  }
+
+  const parentId=firstRecord?.id?String(firstRecord.id):null;
+  const returnedVariations=(firstRecord?.variacoes||[]).map(item=>item?.variacao||item).filter(Boolean);
+
+  for(let index=0;index<group.variants.length;index++){
+    const variant=group.variants[index];
+    const externalVariant=returnedVariations[index]||{};
+    const body={
+      provider:'olist_erp',
+      sku:variant.sku,
+      product_name:group.name,
+      flavor:variant.flavor||null,
+      size:variant.size||null,
+      external_id:externalVariant.id?String(externalVariant.id):parentId,
+      external_code:variant.sku,
+      last_known_stock:variant.stock,
+      status:'created',
+      metadata:{
+        parentExternalId:parentId,
+        origin:clean(options.origin)||'0',
+        unit:clean(options.unit)||'UN',
+        createdFrom:'atletic_admin'
+      },
+      last_synced_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    };
+    await supabaseRequest('erp_product_mappings?on_conflict=provider,sku',{
+      method:'POST',
+      authorization:auth.authorization,
+      prefer:'resolution=merge-duplicates,return=minimal',
+      body
+    });
+  }
+
+  await logSync(auth,{
+    direction:'outbound',
+    entityType:'product',
+    entityKey:group.key,
+    externalId:parentId,
+    status:'ok',
+    message:`Produto criado na Olist com ${group.variants.length} variação(ões).`,
+    payload:{name:group.name,skus:group.variants.map(v=>v.sku)},
+    response:{parentId,variationIds:returnedVariations.map(v=>v.id).filter(Boolean)}
+  });
+
+  return {status:'created',name:group.name,parentId,created:group.variants.length,matched:0,skipped:0};
+}
+
+async function createMissingCatalog(auth,{items=[],origin='0',unit='UN'}={}){
+  const groups=groupCatalogItems(items).slice(0,50);
+  const results=[];
+  for(const group of groups){
+    try{
+      results.push(await createProductGroup(auth,group,{origin,unit}));
+    }catch(error){
+      results.push({
+        status:'error',
+        name:group.name,
+        created:0,
+        matched:0,
+        skipped:group.variants.length,
+        message:error.message
+      });
+      await logSync(auth,{
+        direction:'outbound',
+        entityType:'product',
+        entityKey:group.key,
+        status:'error',
+        message:error.message,
+        payload:{name:group.name,skus:group.variants.map(v=>v.sku)}
+      });
+    }
+  }
+
+  const summary={
+    products:groups.length,
+    createdProducts:results.filter(x=>x.status==='created').length,
+    createdVariants:results.reduce((sum,x)=>sum+num(x.created),0),
+    alreadyExists:results.filter(x=>x.status==='already_exists').length,
+    partial:results.filter(x=>x.status==='partial_existing').length,
+    errors:results.filter(x=>x.status==='error').length
+  };
+  return {summary,results};
+}
+
 function buildOrder(payload={}){
   const customer=payload.customer||{};
   const shipping=payload.shipping||{};
@@ -379,6 +569,16 @@ export default async function handler(req,res){
     if(action==='match_catalog'){
       if(!configured)return json(res,409,{error:'OLIST_ERP_TOKEN ainda não está configurado na Vercel.'});
       const result=await matchCatalog(auth,req.body?.items||[]);
+      return json(res,200,{ok:true,...result});
+    }
+
+    if(action==='create_missing_catalog'){
+      if(!configured)return json(res,409,{error:'OLIST_ERP_TOKEN ainda não está configurado na Vercel.'});
+      if(!['admin','manager'].includes(auth.role))return json(res,403,{error:'Somente administrador ou gerente pode cadastrar produtos no ERP.'});
+      const origin=clean(req.body?.origin);
+      const unit=clean(req.body?.unit)||'UN';
+      if(!/^[0-8]$/.test(origin))return json(res,400,{error:'Selecione uma origem fiscal válida antes de cadastrar.'});
+      const result=await createMissingCatalog(auth,{items:req.body?.items||[],origin,unit});
       return json(res,200,{ok:true,...result});
     }
 

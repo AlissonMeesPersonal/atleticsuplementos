@@ -120,7 +120,7 @@
             try{
               const url=new URL(safe,location.href);
               return url.hostname==='cdn.awsli.com.br'
-                ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=8`
+                ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&mode=white-only&v=9`
                 : safe;
             }catch{return safe}
           })()

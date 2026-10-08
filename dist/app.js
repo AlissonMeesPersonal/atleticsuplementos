@@ -10,7 +10,7 @@
     try{
       const url=new URL(safe,location.href);
       return url.hostname==='cdn.awsli.com.br'
-        ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&v=5`
+        ? `/api/product-cutout?url=${encodeURIComponent(url.href)}&v=6`
         : safe;
     }catch{return safe}
   };

@@ -71,7 +71,7 @@
   }
   const modules = {
     overview: 'Dashboard', products: 'Produtos', categories: 'Categorias', brands: 'Marcas', stock: 'Estoque',
-    customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', images: 'Biblioteca de imagens', settings: 'Configurações'
+    customers: 'Clientes', orders: 'Pedidos', coupons: 'Cupons', banners: 'Banners / Parceiros', showcase: 'Vitrine do site', images: 'Biblioteca de imagens', settings: 'Configurações'
   };
   let page = 'overview';
   let editing = null;
@@ -312,6 +312,175 @@
     await loadLibrary();
   }
 
+  async function renderShowcase() {
+    const highlightCategories=['Proteínas','Creatinas','Pré-treinos','Vitaminas','Acessórios'];
+    let visuals={hero:[],highlights:{}};
+    let images=[];
+    let activeSlot='hero:0';
+
+    $('#adminContent').innerHTML=`
+      <div class="showcase-head">
+        <div>
+          <h2>Vitrine do site</h2>
+          <p class="muted">Escolha diretamente da biblioteca as 3 imagens do hero e a imagem exibida em cada destaque de categoria.</p>
+        </div>
+        <button id="saveShowcase" class="button">Salvar vitrine</button>
+      </div>
+
+      <section class="panel showcase-section">
+        <div class="showcase-section-title">
+          <div><p class="eyebrow">HERO PRINCIPAL</p><h2>3 produtos do topo</h2></div>
+          <span class="status-chip">Selecione exatamente 3</span>
+        </div>
+        <div id="heroSlots" class="showcase-slots"></div>
+      </section>
+
+      <section class="panel showcase-section">
+        <div class="showcase-section-title">
+          <div><p class="eyebrow">DESTAQUES</p><h2>Imagem por categoria</h2></div>
+          <span class="status-chip">1 imagem por categoria</span>
+        </div>
+        <div id="highlightSlots" class="showcase-slots showcase-slots-categories"></div>
+      </section>
+
+      <section class="panel showcase-library-panel">
+        <div class="showcase-library-head">
+          <div>
+            <h2>Biblioteca de imagens</h2>
+            <p class="muted" id="showcaseInstruction">Escolha um espaço acima e depois clique na imagem desejada.</p>
+          </div>
+          <input id="showcaseSearch" type="search" placeholder="Filtrar produto, marca ou categoria">
+        </div>
+        <div id="showcaseLibrary" class="showcase-library-grid"><div class="empty-panel">Carregando biblioteca…</div></div>
+      </section>
+    `;
+
+    const token=adminToken();
+    const [visualResponse,imageResponse]=await Promise.all([
+      fetch('/api/site-visuals'),
+      fetch('/api/image-library?limit=500',{headers:token?{Authorization:`Bearer ${token}`}:{}})
+    ]);
+
+    const visualPayload=await visualResponse.json().catch(()=>({}));
+    const imagePayload=await imageResponse.json().catch(()=>({}));
+    if(visualResponse.ok&&visualPayload.visuals) visuals=visualPayload.visuals;
+    if(!imageResponse.ok){
+      $('#showcaseLibrary').innerHTML=`<div class="empty-panel">${esc(imagePayload.error||'Não foi possível carregar a biblioteca.')}</div>`;
+      return;
+    }
+    images=imagePayload.images||[];
+
+    const visualCard=(item,label,slot)=>`
+      <button type="button" class="showcase-slot ${activeSlot===slot?'active':''}" data-visual-slot="${esc(slot)}">
+        <span class="showcase-slot-label">${esc(label)}</span>
+        ${item?.image_url
+          ? `<span class="showcase-slot-image"><img src="${esc(item.image_url)}" alt=""></span>
+             <strong>${esc(item.title||'Imagem selecionada')}</strong>
+             <small>${esc(item.brand||item.category||'Biblioteca')}</small>`
+          : `<span class="showcase-slot-empty">+ Escolher imagem</span>`
+        }
+      </button>
+    `;
+
+    function renderSlots(){
+      const hero=[0,1,2].map(index=>visualCard(visuals.hero?.[index],`Hero ${index+1}`,`hero:${index}`)).join('');
+      $('#heroSlots').innerHTML=hero;
+      $('#highlightSlots').innerHTML=highlightCategories.map(category=>
+        visualCard(visuals.highlights?.[category],category,`highlight:${category}`)
+      ).join('');
+      document.querySelectorAll('[data-visual-slot]').forEach(button=>{
+        button.onclick=()=>{
+          activeSlot=button.dataset.visualSlot;
+          renderSlots();
+          renderLibrary();
+          const [kind,key]=activeSlot.split(':');
+          $('#showcaseInstruction').textContent=kind==='hero'
+            ? `Escolhendo a imagem do Hero ${Number(key)+1}. Clique em uma imagem abaixo.`
+            : `Escolhendo a imagem do destaque “${key}”. Clique em uma imagem abaixo.`;
+        };
+      });
+    }
+
+    function matches(image,term){
+      if(!term)return true;
+      return [image.title,image.brand,image.category,image.sku]
+        .filter(Boolean).join(' ')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .toLowerCase().includes(term);
+    }
+
+    function renderLibrary(){
+      const term=String($('#showcaseSearch')?.value||'')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .toLowerCase().trim();
+      const list=images.filter(image=>matches(image,term));
+      $('#showcaseLibrary').innerHTML=list.length?list.map(image=>`
+        <button type="button" class="showcase-library-item" data-library-id="${esc(image.id)}">
+          <span><img src="${esc(image.thumbnail_url||image.image_url)}" alt="${esc(image.title)}" loading="lazy"></span>
+          <strong>${esc(image.title)}</strong>
+          <small>${esc([image.brand,image.category].filter(Boolean).join(' · ')||'Sem classificação')}</small>
+        </button>
+      `).join(''):'<div class="empty-panel">Nenhuma imagem encontrada.</div>';
+
+      document.querySelectorAll('[data-library-id]').forEach(button=>{
+        button.onclick=()=>{
+          const image=images.find(item=>String(item.id)===String(button.dataset.libraryId));
+          if(!image)return;
+          const selected={
+            id:image.id,
+            title:image.title||'',
+            brand:image.brand||'',
+            category:image.category||'',
+            image_url:image.image_url,
+            source_product_url:image.source_product_url||''
+          };
+          const [kind,key]=activeSlot.split(':');
+          if(kind==='hero'){
+            const hero=Array.isArray(visuals.hero)?[...visuals.hero]:[];
+            hero[Number(key)]=selected;
+            visuals.hero=hero;
+            notify(`Hero ${Number(key)+1} atualizado para “${selected.title}”.`);
+          }else{
+            visuals.highlights={...(visuals.highlights||{}),[key]:selected};
+            notify(`Destaque “${key}” atualizado para “${selected.title}”.`);
+          }
+          renderSlots();
+        };
+      });
+    }
+
+    $('#showcaseSearch').oninput=renderLibrary;
+    $('#saveShowcase').onclick=async()=>{
+      const button=$('#saveShowcase');
+      const selectedHero=(visuals.hero||[]).filter(item=>item?.image_url);
+      if(selectedHero.length!==3){
+        notify('Selecione as 3 imagens do hero antes de salvar.');
+        return;
+      }
+      button.disabled=true;
+      button.textContent='Salvando…';
+      try{
+        const response=await fetch('/api/site-visuals',{
+          method:'POST',
+          headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+          body:JSON.stringify(visuals)
+        });
+        const payload=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(payload.error||'Não foi possível salvar a vitrine.');
+        visuals=payload.visuals||visuals;
+        notify('Vitrine salva. Hero e destaques já foram atualizados no site.');
+      }catch(error){
+        notify(error.message);
+      }finally{
+        button.disabled=false;
+        button.textContent='Salvar vitrine';
+      }
+    };
+
+    renderSlots();
+    renderLibrary();
+  }
+
   function renderSettings() {
     const cfg=window.ATLETIC_CONFIG||{};
     $('#adminContent').innerHTML=`<div class="admin-grid"><section class="panel"><h2>Integrações</h2><div class="status-row"><span class="status-chip">GitHub → Vercel: conectado</span><span class="status-chip">Supabase: ${cfg.supabaseUrl?'configurado':'aguardando projeto exclusivo'}</span><span class="status-chip">Busca de imagens: função criada</span><span class="status-chip">Pagamento: integrar depois</span></div><p class="muted" style="margin-top:16px">A chave secreta do provedor de imagens deve ficar apenas nas variáveis da Vercel. O navegador nunca recebe essa chave.</p></section><section class="panel"><h2>Dados de demonstração</h2><p class="muted">Admin e vitrine deste navegador compartilham os mesmos cadastros locais.</p><div class="button-row"><button id="resetDemo" class="button secondary">Restaurar exemplos</button></div></section></div>`;
@@ -325,6 +494,7 @@
     if(page==='overview') return renderOverview();
     if(page==='customers') return renderCustomers();
     if(page==='orders') return renderOrders();
+    if(page==='showcase') return renderShowcase();
     if(page==='images') return renderImageLibrary();
     if(page==='settings') return renderSettings();
     if(page==='brands' || page==='categories') {

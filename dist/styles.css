@@ -337,3 +337,33 @@ h2{font-size:clamp(28px,3vw,42px);line-height:1.05}
   .hero{padding-left:28px;padding-right:28px}
   .products{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+
+/* Persistent shopping bag */
+.cart-trigger{position:relative;display:inline-flex;align-items:center;gap:9px;min-height:46px;padding:0 10px;border-radius:10px;font-weight:700}
+.cart-icon{width:25px;height:25px;display:grid;place-items:center}
+.cart-icon svg,.mobile-cart-icon svg,.floating-cart-icon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.cart-trigger #count{margin-left:1px;min-width:25px;width:auto;height:25px;padding:0 7px;font-size:11px;line-height:1}
+.cart-trigger:hover{background:var(--surface)}
+.floating-cart{position:fixed;right:24px;bottom:24px;z-index:88;display:flex;align-items:center;gap:12px;min-width:205px;padding:12px 14px;border-radius:16px;background:var(--text);color:var(--bg);box-shadow:0 16px 42px rgba(0,0,0,.28);border:1px solid color-mix(in srgb,var(--bg) 14%,transparent);transition:transform .2s ease,opacity .2s ease}
+.floating-cart[hidden]{display:none}
+.floating-cart:hover{transform:translateY(-3px)}
+.floating-cart-icon{width:28px;height:28px;flex:0 0 auto}
+.floating-cart-copy{display:grid;text-align:left;line-height:1.15;min-width:0}
+.floating-cart-copy strong{font-size:12px}
+.floating-cart-copy small{font-size:10px;opacity:.68;margin-top:3px}
+#floatingCartCount{margin-left:auto;min-width:30px;height:30px;padding:0 7px;border-radius:50%;display:grid;place-items:center;background:var(--orange);color:#151515;font-size:12px}
+.cart-pop{animation:cartPop .32s ease}
+@keyframes cartPop{0%{transform:scale(.94)}55%{transform:scale(1.045)}100%{transform:scale(1)}}
+.mobile-cart-icon{width:25px;height:25px;display:grid;place-items:center}
+#mobileCart{position:relative}
+#mobileCount{position:absolute;top:2px;right:calc(50% - 24px);min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--orange);color:#111;font-size:9px;font-weight:800;display:grid;place-items:center;border:2px solid var(--bg)}
+@media(max-width:820px){
+  .cart-trigger{min-width:44px;width:44px;padding:0;justify-content:center}
+  .cart-trigger .cart-label{display:none}
+  .cart-trigger #count{position:absolute;right:-4px;top:-3px;min-width:20px;height:20px;padding:0 5px;border:2px solid var(--bg);font-size:9px}
+  .cart-icon{width:27px;height:27px}
+}
+@media(max-width:700px){
+  .floating-cart{display:none!important}
+  .mobile-cart-icon{width:24px;height:24px}
+}

@@ -74,10 +74,6 @@
   for(const p of products){const qty=stored[p.id];if(Number.isInteger(qty)&&qty>0)cart[p.id]=Math.min(qty,99)}
   let activeCoupon=read('atletic.coupon.v2',null);
   let toastTimer;
-  let selectedProductVariant='';
-  let selectedProductQty=1;
-  const checkoutDraft=read('atletic.checkout.draft.v1',{});
-  let shippingCep=String(checkoutDraft.cep||'');
 
   const THEME_KEY='atletic.theme';
   function readTheme(){
@@ -149,40 +145,6 @@
     return String(raw?.description||'').trim();
   }
 
-  function productFamily(product){
-    return products.filter(item=>item.productId===product.productId);
-  }
-
-  function updateProductViewVariant(id){
-    const product=products.find(item=>item.id===id);
-    if(!product)return;
-    selectedProductVariant=product.id;
-    $('#productViewDetail').textContent=product.detail||'';
-    $('#productViewStock').textContent=stockLabel(product);
-    $('#productViewStock').className=`product-view-stock ${product.stock<=0?'out':'in'}`;
-    $('#productViewPrice').textContent=displayPrice(product.price);
-    $('#productViewCompare').textContent=product.comparePrice>product.price&&product.price>0?money(product.comparePrice):'';
-    $('#productViewSku').textContent=product.sku||'—';
-    $('#productViewFlavorStatus').textContent=product.detail||'';
-    document.querySelectorAll('[data-product-variant]').forEach(button=>{
-      const active=button.dataset.productVariant===product.id;
-      button.classList.toggle('active',active);
-      button.setAttribute('aria-pressed',String(active));
-    });
-    const disabled=product.stock<=0;
-    $('#productViewAdd').disabled=disabled;
-    $('#productBuyNow').disabled=disabled;
-  }
-
-  function setProductQty(next){
-    const product=products.find(item=>item.id===selectedProductVariant);
-    const max=Math.max(1,Math.min(99,Number(product?.stock||1)));
-    selectedProductQty=Math.max(1,Math.min(Number(next)||1,max));
-    $('#productQtyValue').textContent=selectedProductQty;
-    $('#productQtyMinus').disabled=selectedProductQty<=1;
-    $('#productQtyPlus').disabled=selectedProductQty>=max;
-  }
-
   function displayPrice(value){
     return Number(value||0)>0?money(value):'Preço a definir';
   }
@@ -197,28 +159,28 @@
     const product=products.find(item=>item.id===id);
     if(!product)return;
 
-    const family=productFamily(product);
     const images=productImages(product);
     const main=images[0]||'';
     const dialog=$('#productView');
 
-    selectedProductVariant=product.id;
-    selectedProductQty=1;
     $('#productViewImage').src=main?transparentProductImage(main):'';
     $('#productViewImage').alt=product.name||'Produto';
     $('#productViewMeta').textContent=[product.brand,product.category].filter(Boolean).join(' · ');
     $('#productViewTitle').textContent=product.name||'Produto';
+    $('#productViewDetail').textContent=product.detail||'';
     $('#productViewDescription').textContent=productDescription(product)||'Produto selecionado pela Atletic Suplementos.';
+    $('#productViewStock').textContent=stockLabel(product);
+    $('#productViewStock').className=`product-view-stock ${product.stock<=0?'out':'in'}`;
+    $('#productViewPrice').textContent=displayPrice(product.price);
+    $('#productViewCompare').textContent=product.comparePrice>product.price&&product.price>0?money(product.comparePrice):'';
     $('#productViewBrand').textContent=product.brand||'—';
     $('#productViewCategory').textContent=product.category||'—';
+    $('#productViewSku').textContent=product.sku||'—';
 
-    const variants=$('#productViewVariants');
-    const options=$('#productViewVariantOptions');
-    variants.hidden=!family.length;
-    options.innerHTML=family.map(item=>{
-      const label=item.detail||item.sku||'Padrão';
-      return `<button type="button" class="product-variant-option" data-product-variant="${escape(item.id)}" aria-pressed="${item.id===product.id?'true':'false'}">${escape(label)}</button>`;
-    }).join('');
+    const add=$('#productViewAdd');
+    add.dataset.add=product.id;
+    add.disabled=product.stock<=0;
+    add.innerHTML=product.stock<=0?'Indisponível':'Adicionar à sacola <span>+</span>';
 
     $('#productViewThumbs').innerHTML=images.length>1?images.map((url,index)=>`
       <button type="button" class="product-view-thumb ${index===0?'active':''}" data-view-image="${escape(url)}" aria-label="Ver imagem ${index+1}">
@@ -226,8 +188,6 @@
       </button>
     `).join(''):'';
 
-    updateProductViewVariant(product.id);
-    setProductQty(1);
     dialog.showModal();
     document.body.style.overflow='hidden';
   }
@@ -309,65 +269,6 @@
     $('#couponMessage').textContent=coupon?`${coupon.code} aplicado${subtotal<Number(coupon.minimum||0)?` — mínimo ${money(coupon.minimum)} ainda não atingido.`:'.'}`:'Digite um cupom válido cadastrado pela loja.';$('#checkoutMessage').textContent='';
   }
 
-  function onlyDigits(value){return String(value||'').replace(/\D/g,'')}
-
-  function formatCep(value){
-    const digits=onlyDigits(value).slice(0,8);
-    return digits.length>5?`${digits.slice(0,5)}-${digits.slice(5)}`:digits;
-  }
-
-  function checkoutTotals(){
-    const items=Object.keys(cart).map(cartProduct).filter(Boolean);
-    const count=items.reduce((sum,p)=>sum+cart[p.id],0);
-    const subtotal=items.reduce((sum,p)=>sum+p.price*cart[p.id],0);
-    const coupon=couponRecord();
-    let discount=0;
-    if(coupon&&subtotal>=Number(coupon.minimum||0))discount=coupon.kind==='fixed'?Math.min(Number(coupon.amount),subtotal):Math.round(subtotal*Number(coupon.amount)/100);
-    return {items,count,subtotal,discount,total:subtotal-discount};
-  }
-
-  function saveCheckoutDraft(extra={}){
-    Object.assign(checkoutDraft,extra);
-    save('atletic.checkout.draft.v1',checkoutDraft);
-  }
-
-  function showCheckoutStep(step){
-    document.querySelectorAll('[data-checkout-step]').forEach(section=>section.classList.toggle('active',Number(section.dataset.checkoutStep)===step));
-    document.querySelectorAll('[data-checkout-progress]').forEach(item=>{
-      const current=Number(item.dataset.checkoutProgress);
-      item.classList.toggle('active',current===step);
-      item.classList.toggle('done',current<step);
-    });
-    if(step===1)setTimeout(()=>$('#checkoutEmail').focus(),60);
-    if(step===2)setTimeout(()=>$('#checkoutName').focus(),60);
-    if(step===3){
-      const totals=checkoutTotals();
-      $('#checkoutSummaryCount').textContent=`${totals.count} ${totals.count===1?'produto':'produtos'}`;
-      $('#checkoutSummaryTotal').textContent=money(totals.total);
-      setTimeout(()=>$('#checkoutCep').focus(),60);
-    }
-  }
-
-  function openCheckout(){
-    const totals=checkoutTotals();
-    if(!totals.count)return;
-    $('#checkoutEmail').value=checkoutDraft.email||'';
-    $('#checkoutName').value=checkoutDraft.name||'';
-    $('#checkoutPhone').value=checkoutDraft.phone||'';
-    $('#checkoutCpf').value=checkoutDraft.cpf||'';
-    $('#checkoutCep').value=formatCep(checkoutDraft.cep||shippingCep||'');
-    $('#checkoutNumber').value=checkoutDraft.number||'';
-    $('#checkoutStreet').value=checkoutDraft.street||'';
-    $('#checkoutDistrict').value=checkoutDraft.district||'';
-    $('#checkoutCity').value=checkoutDraft.city||'';
-    $('#checkoutState').value=checkoutDraft.state||'';
-    $('#checkoutComplement').value=checkoutDraft.complement||'';
-    $('#checkoutFlowMessage').textContent='';
-    showCheckoutStep(checkoutDraft.email?2:1);
-    $('#checkoutFlow').showModal();
-    document.body.style.overflow='hidden';
-  }
-
   const mainNav=$('#mainNav');
   const menuToggle=$('#menuToggle');
   const navClose=$('#navClose');
@@ -405,8 +306,7 @@
       $('#productViewImage').src=transparentProductImage(thumb.dataset.viewImage);
       document.querySelectorAll('.product-view-thumb').forEach(item=>item.classList.toggle('active',item===thumb));
     }
-    const variant=e.target.closest('[data-product-variant]');if(variant){updateProductViewVariant(variant.dataset.productVariant);setProductQty(1)}
-    const a=e.target.closest('[data-add]');if(a&&!a.disabled){const p=cartProduct(a.dataset.add);if(!p||p.stock<=0)return;const quantity=Math.max(1,Number(a.dataset.quantity||1));cart[p.id]=Math.min((cart[p.id]||0)+quantity,p.stock,99);renderCart();toast(quantity>1?`${quantity} produtos adicionados à sacola`:'Produto adicionado à sacola')}
+    const a=e.target.closest('[data-add]');if(a&&!a.disabled){const p=cartProduct(a.dataset.add);if(!p||p.stock<=0)return;cart[p.id]=Math.min((cart[p.id]||0)+1,p.stock,99);renderCart();toast('Produto adicionado à sacola')}
     const q=e.target.closest('[data-qty]');if(q){const p=cartProduct(q.dataset.qty);if(!p)return;const next=Math.min((cart[p.id]||0)+Number(q.dataset.change),p.stock,99);if(next<=0)delete cart[p.id];else cart[p.id]=next;renderCart()}
     const r=e.target.closest('[data-remove]');if(r){delete cart[r.dataset.remove];renderCart()}
   });
@@ -416,89 +316,10 @@
   $('#productViewClose').onclick=()=>$('#productView').close();
   $('#productView').addEventListener('close',()=>{document.body.style.overflow=''});
   $('#productView').addEventListener('click',e=>{if(e.target===$('#productView'))$('#productView').close()});
-  $('#productQtyMinus').onclick=()=>setProductQty(selectedProductQty-1);
-  $('#productQtyPlus').onclick=()=>setProductQty(selectedProductQty+1);
-  $('#productViewAdd').onclick=()=>{
-    const p=cartProduct(selectedProductVariant);
-    if(!p||p.stock<=0)return;
-    cart[p.id]=Math.min((cart[p.id]||0)+selectedProductQty,p.stock,99);
-    renderCart();
-    toast(selectedProductQty>1?`${selectedProductQty} produtos adicionados à sacola`:'Produto adicionado à sacola');
-  };
-  $('#productBuyNow').onclick=()=>{
-    const p=cartProduct(selectedProductVariant);
-    if(!p||p.stock<=0)return;
-    cart[p.id]=Math.min((cart[p.id]||0)+selectedProductQty,p.stock,99);
-    renderCart();
-    $('#productView').close();
-    setTimeout(()=>$('#cartOpen').click(),80);
-  };
   $('#cartOpen').onclick=()=>{$('#cart').showModal();document.body.style.overflow='hidden'};function closeCart(){$('#cart').close()}$('#cartClose').onclick=closeCart;$('#cart').addEventListener('close',()=>{document.body.style.overflow='';$('#cartOpen').focus()});
-  $('#shippingCep').value=formatCep(shippingCep);
-  $('#shippingCep').addEventListener('input',e=>{e.target.value=formatCep(e.target.value)});
-  $('#shippingForm').onsubmit=e=>{
-    e.preventDefault();
-    const digits=onlyDigits($('#shippingCep').value);
-    if(digits.length!==8){$('#shippingMessage').textContent='Digite um CEP válido com 8 números.';return}
-    shippingCep=formatCep(digits);
-    $('#shippingCep').value=shippingCep;
-    saveCheckoutDraft({cep:shippingCep});
-    $('#shippingMessage').textContent='CEP salvo. Vamos usar esse endereço no checkout.';
-  };
   $('#couponForm').onsubmit=e=>{e.preventDefault();const code=$('#coupon').value.trim().toUpperCase();const found=AtleticStore.load().coupons.find(c=>c.code===code&&c.active);if(found){activeCoupon=found.code;renderCart()}else $('#couponMessage').textContent='Cupom não encontrado ou inativo.'};
   $('#removeCoupon').onclick=()=>{activeCoupon=null;renderCart()};
-  $('#checkout').onclick=()=>{closeCart();setTimeout(openCheckout,80)};
-
-  $('#checkoutClose').onclick=()=>$('#checkoutFlow').close();
-  $('#checkoutFlow').addEventListener('close',()=>{document.body.style.overflow=''});
-  $('#checkoutFlow').addEventListener('click',e=>{if(e.target===$('#checkoutFlow'))$('#checkoutFlow').close()});
-  document.querySelectorAll('[data-checkout-back]').forEach(button=>button.onclick=()=>showCheckoutStep(Number(button.dataset.checkoutBack)));
-
-  $('#checkoutEmailForm').onsubmit=e=>{
-    e.preventDefault();
-    const email=$('#checkoutEmail').value.trim();
-    if(!email||!$('#checkoutEmail').checkValidity())return $('#checkoutEmail').reportValidity();
-    saveCheckoutDraft({email});
-    showCheckoutStep(2);
-  };
-
-  $('#checkoutCustomerForm').onsubmit=e=>{
-    e.preventDefault();
-    const name=$('#checkoutName').value.trim();
-    const phone=onlyDigits($('#checkoutPhone').value);
-    const cpf=onlyDigits($('#checkoutCpf').value);
-    if(name.length<3){$('#checkoutName').focus();return}
-    if(phone.length<10){$('#checkoutPhone').focus();return}
-    if(cpf.length!==11){$('#checkoutCpf').focus();return}
-    saveCheckoutDraft({name,phone:$('#checkoutPhone').value.trim(),cpf:$('#checkoutCpf').value.trim()});
-    showCheckoutStep(3);
-  };
-
-  $('#checkoutCep').addEventListener('input',e=>{e.target.value=formatCep(e.target.value)});
-  $('#checkoutState').addEventListener('input',e=>{e.target.value=e.target.value.replace(/[^a-z]/gi,'').toUpperCase().slice(0,2)});
-  $('#checkoutAddressForm').onsubmit=e=>{
-    e.preventDefault();
-    const cep=formatCep($('#checkoutCep').value);
-    if(onlyDigits(cep).length!==8){$('#checkoutCep').focus();return}
-    const data={
-      cep,
-      number:$('#checkoutNumber').value.trim(),
-      street:$('#checkoutStreet').value.trim(),
-      district:$('#checkoutDistrict').value.trim(),
-      city:$('#checkoutCity').value.trim(),
-      state:$('#checkoutState').value.trim().toUpperCase(),
-      complement:$('#checkoutComplement').value.trim()
-    };
-    if(!data.number||!data.street||!data.district||!data.city||data.state.length!==2)return;
-    saveCheckoutDraft(data);
-    const totals=checkoutTotals();
-    saveCheckoutDraft({
-      cart:Object.fromEntries(Object.entries(cart)),
-      total:totals.total,
-      updatedAt:new Date().toISOString()
-    });
-    $('#checkoutFlowMessage').textContent='Dados e pedido salvos. Próxima etapa: conectar frete e pagamento para concluir a compra.';
-  };
+  $('#checkout').onclick=()=>{$('#checkoutMessage').textContent='Checkout ainda bloqueado. A próxima integração validará preço, frete, cupom, estoque e pagamento no servidor antes de criar o pedido.'};
   $('#year').textContent=new Date().getFullYear();
 
   async function loadSiteVisuals(){

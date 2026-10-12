@@ -87,6 +87,7 @@
   let barcodeFallbackMode = false;
   let barcodeCameras = [];
   let barcodeSelectedDeviceId = '';
+  let barcodeManualDeviceSelection = false;
   let barcodeBusy = false;
   let barcodeCurrentCode = '';
   let barcodeCurrentProduct = null;
@@ -282,6 +283,7 @@
     $('#barcodeRefreshCameras').onclick=async()=>{await refreshBarcodeCameras(true)};
     $('#barcodeCameraSelect').onchange=async event=>{
       barcodeSelectedDeviceId=event.target.value||'';
+      barcodeManualDeviceSelection=Boolean(barcodeSelectedDeviceId);
       await startBarcodeCamera(barcodeSelectedDeviceId);
     };
     $('#barcodeScanner').addEventListener('close',stopBarcodeCamera);
@@ -326,6 +328,20 @@
     }
   }
 
+  function isIOSLike() {
+    return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+      || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  }
+
+  function cameraPriority(device) {
+    const label=String(device?.label||'').toLowerCase();
+    if(/traseira|back|rear|environment/.test(label)&&!/dupla|dual|tripla|triple|tele|ultra/.test(label))return 0;
+    if(/wide|grande-angular/.test(label)&&!/dupla|dual|ultra/.test(label))return 1;
+    if(/traseira|back|rear/.test(label))return 2;
+    if(/frontal|front|user/.test(label))return 8;
+    return 4;
+  }
+
   async function refreshBarcodeCameras(forceLabelRefresh=false) {
     const controls=$('#barcodeCameraControls');
     const select=$('#barcodeCameraSelect');
@@ -338,38 +354,32 @@
       devices=[];
     }
 
-    // Some browsers hide labels until camera permission is granted.
     if(forceLabelRefresh&&devices.some(device=>!device.label)&&navigator.mediaDevices?.getUserMedia){
       let probe=null;
-      try{
-        probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-      }catch{}
+      try{probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false})}catch{}
       if(probe)probe.getTracks().forEach(track=>track.stop());
       try{
         devices=(await navigator.mediaDevices.enumerateDevices()).filter(device=>device.kind==='videoinput');
       }catch{}
     }
 
+    devices.sort((a,b)=>cameraPriority(a)-cameraPriority(b));
     barcodeCameras=devices;
     controls.hidden=!devices.length;
 
     const previous=barcodeSelectedDeviceId||select.value;
-    select.innerHTML=devices.map((device,index)=>{
+    const autoLabel=isIOSLike()?'Automático — câmera traseira (recomendado)':'Automático — câmera traseira';
+    select.innerHTML=`<option value="">${autoLabel}</option>`+devices.map((device,index)=>{
       const label=device.label||`Câmera ${index+1}`;
       return `<option value="${esc(device.deviceId)}">${esc(label)}</option>`;
     }).join('');
 
-    if(devices.length){
-      let preferred=devices.find(device=>device.deviceId===previous);
-      if(!preferred){
-        preferred=devices.find(device=>/back|rear|environment|traseira/i.test(device.label))
-          ||devices.find(device=>!/front|user|frontal/i.test(device.label))
-          ||devices[0];
-      }
-      barcodeSelectedDeviceId=preferred?.deviceId||devices[0].deviceId;
-      select.value=barcodeSelectedDeviceId;
+    if(barcodeManualDeviceSelection&&previous&&devices.some(device=>device.deviceId===previous)){
+      barcodeSelectedDeviceId=previous;
+      select.value=previous;
     }else{
       barcodeSelectedDeviceId='';
+      select.value='';
     }
 
     return devices;
@@ -401,7 +411,7 @@
     const state=await barcodeCameraPermissionState();
     if(state==='granted'){
       await refreshBarcodeCameras(true);
-      await startBarcodeCamera(barcodeSelectedDeviceId);
+      await startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'');
       return;
     }
     if(state==='denied'){
@@ -426,7 +436,7 @@
       probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
       if(probe)probe.getTracks().forEach(track=>track.stop());
       await refreshBarcodeCameras(true);
-      await startBarcodeCamera(barcodeSelectedDeviceId);
+      await startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'');
     }catch(error){
       if(probe)probe.getTracks().forEach(track=>track.stop());
       showBarcodePermission({
@@ -460,6 +470,62 @@
       document.head.appendChild(script);
     });
     return window.__atleticHtml5QrcodePromise;
+  }
+
+  async function waitForCameraFrames(video,timeoutMs=2200) {
+    if(!video)return false;
+    const started=Date.now();
+    while(Date.now()-started<timeoutMs){
+      if(video.readyState>=2&&video.videoWidth>0&&video.videoHeight>0){
+        try{
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.min(video.videoWidth,320);
+          canvas.height=Math.max(1,Math.round(canvas.width*(video.videoHeight/video.videoWidth)));
+          const ctx=canvas.getContext('2d',{willReadFrequently:true});
+          ctx.drawImage(video,0,0,canvas.width,canvas.height);
+          const sample=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+          let total=0;
+          let variation=0;
+          let prev=null;
+          const step=Math.max(4,Math.floor(sample.length/4000/4)*4);
+          for(let i=0;i<sample.length;i+=step){
+            const lum=(sample[i]+sample[i+1]+sample[i+2])/3;
+            total+=lum;
+            if(prev!==null)variation+=Math.abs(lum-prev);
+            prev=lum;
+          }
+          const count=Math.max(1,Math.ceil(sample.length/step));
+          const avg=total/count;
+          const diff=variation/count;
+          // A live camera can be dark, but a permanently black virtual stream is near-zero in both metrics.
+          if(avg>2||diff>0.8)return true;
+        }catch{
+          return true;
+        }
+      }
+      await new Promise(resolve=>setTimeout(resolve,180));
+    }
+    return false;
+  }
+
+  async function restartWithAlternateCamera(failedDeviceId='') {
+    const candidates=(barcodeCameras||[])
+      .filter(device=>device.deviceId&&device.deviceId!==failedDeviceId)
+      .sort((a,b)=>cameraPriority(a)-cameraPriority(b));
+
+    for(const device of candidates.slice(0,4)){
+      try{
+        barcodeManualDeviceSelection=true;
+        barcodeSelectedDeviceId=device.deviceId;
+        if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value=device.deviceId;
+        await startBarcodeCamera(device.deviceId,true);
+        return true;
+      }catch{}
+    }
+    barcodeManualDeviceSelection=false;
+    barcodeSelectedDeviceId='';
+    if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value='';
+    return false;
   }
 
   async function startFallbackBarcodeScanner(deviceId='') {
@@ -510,7 +576,7 @@
 
       const cameraConfig=deviceId
         ? {deviceId:{exact:deviceId}}
-        : {facingMode:{ideal:'environment'}};
+        : {facingMode:'environment'};
 
       await barcodeFallbackScanner.start(
         cameraConfig,
@@ -538,7 +604,7 @@
     }
   }
 
-  async function startBarcodeCamera(deviceId='') {
+  async function startBarcodeCamera(deviceId='',internalRetry=false) {
     await stopBarcodeCamera();
     const message=$('#barcodeCameraMessage');
     const video=$('#barcodeVideo');
@@ -579,10 +645,28 @@
       await video.play();
 
       message.hidden=false;
+      message.textContent='Validando imagem da câmera…';
+
+      const hasFrames=await waitForCameraFrames(video);
+      if(!hasFrames){
+        await stopBarcodeCamera();
+        if(!internalRetry){
+          const switched=await restartWithAlternateCamera(deviceId);
+          if(switched)return;
+        }
+        showBarcodePermission({
+          state:'error',
+          text:'A câmera foi reconhecida, mas não entregou imagem.',
+          help:'Escolha outra câmera na lista abaixo ou toque em “Atualizar câmeras”. Em iPhone, prefira “Automático — câmera traseira”.',
+          button:'Tentar novamente'
+        });
+        await refreshBarcodeCameras(false);
+        return;
+      }
 
       if(!('BarcodeDetector' in window)){
         message.textContent='Câmera autorizada. Iniciando leitor compatível…';
-        await startFallbackBarcodeScanner(deviceId||barcodeSelectedDeviceId);
+        await startFallbackBarcodeScanner(barcodeManualDeviceSelection?(deviceId||barcodeSelectedDeviceId):'');
         return;
       }
 
@@ -757,7 +841,7 @@
     qty.oninput=updateProjection;
     $('#barcodeQtyMinus').onclick=()=>{qty.value=Math.max(1,Number(qty.value||1)-1);updateProjection()};
     $('#barcodeQtyPlus').onclick=()=>{qty.value=Number(qty.value||1)+1;updateProjection()};
-    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;startBarcodeCamera(barcodeSelectedDeviceId)};
+    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'')};
     $('#barcodeReceive').onclick=receiveBarcodeStock;
     setTimeout(()=>qty.focus(),80);
   }
@@ -904,6 +988,8 @@
     ensureBarcodeScanner();
     barcodeCurrentCode='';
     barcodeCurrentProduct=null;
+    barcodeManualDeviceSelection=false;
+    barcodeSelectedDeviceId='';
     $('#barcodeManualCode').value='';
     $('#barcodeResult').hidden=true;
     $('#barcodeStatus').textContent='';

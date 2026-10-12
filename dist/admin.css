@@ -174,3 +174,74 @@
   .olist-migration-head{grid-template-columns:1fr}
   .olist-migration-head .button{width:100%}
 }
+
+/* Barcode stock scanner */
+.admin-toolbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+.barcode-dialog{position:fixed!important;top:50%!important;left:50%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important;width:min(720px,calc(100vw - 28px))!important;max-width:720px!important;max-height:calc(100dvh - 28px)!important;margin:0!important;padding:0!important;overflow:auto!important;border:1px solid var(--border)!important;border-radius:18px!important;background:var(--bg)!important;color:var(--text)!important}
+.barcode-dialog::backdrop{background:rgba(0,0,0,.8);backdrop-filter:blur(7px)}
+.barcode-shell{padding:22px}
+.barcode-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+.barcode-head h2{font-size:26px;margin:4px 0 0}
+#barcodeClose{width:42px;height:42px;border:1px solid var(--border);border-radius:50%;font-size:27px;flex:0 0 auto}
+.barcode-camera-panel{display:grid;gap:10px}
+.barcode-video-wrap{position:relative;overflow:hidden;aspect-ratio:4/3;background:#050505;border:1px solid var(--border);border-radius:14px}
+#barcodeVideo{width:100%;height:100%;object-fit:cover;display:block}
+.barcode-target{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.barcode-target span{display:block;width:min(82%,520px);height:34%;border:2px solid var(--orange);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.22)}
+.barcode-target span::before,.barcode-target span::after{content:"";position:absolute}
+.barcode-camera-message{position:absolute;left:12px;right:12px;bottom:12px;padding:9px 11px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;text-align:center}
+.barcode-tip{font-size:10px;color:var(--muted);line-height:1.55;margin:0}
+.barcode-manual-form{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.barcode-manual-form label{display:grid;gap:7px;font-size:10px;font-weight:700}
+.barcode-manual-form label>div{display:grid;grid-template-columns:1fr auto;gap:8px}
+.barcode-manual-form input,.barcode-note input{width:100%;min-height:44px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}
+.barcode-result{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+.barcode-product{display:grid;grid-template-columns:128px 1fr;gap:16px;align-items:center}
+.barcode-product-image{height:128px;border:1px solid var(--border);border-radius:12px;background:#fff;display:grid;place-items:center;overflow:hidden}
+.barcode-product-image img{width:100%;height:100%;object-fit:contain;padding:8px}
+.barcode-product-image span{font-size:38px;color:#222}
+.barcode-product-info{min-width:0}
+.barcode-source{display:inline-flex;padding:5px 8px;border-radius:20px;background:var(--orange);color:#171717;font-size:8px;font-weight:800;letter-spacing:.55px}
+.barcode-product-info h3{font-size:22px;line-height:1.05;margin:9px 0 6px}
+.barcode-product-info>p{font-size:11px;color:var(--muted);margin:0 0 12px}
+.barcode-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.barcode-meta span{display:grid;gap:3px;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);min-width:0}
+.barcode-meta small{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.barcode-meta strong{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barcode-stock-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:16px 0}
+.barcode-stock-summary>div{display:grid;gap:4px;padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);text-align:center}
+.barcode-stock-summary small{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.barcode-stock-summary strong{font-size:22px}
+.barcode-quantity-block{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px;border:1px solid var(--border);border-radius:10px}
+.barcode-quantity-block>span{font-size:12px;font-weight:800}
+.barcode-qty{display:grid;grid-template-columns:44px 70px 44px;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--card)}
+.barcode-qty button{height:44px;font-size:22px}
+.barcode-qty input{width:100%;height:44px;border:0;border-left:1px solid var(--border);border-right:1px solid var(--border);background:transparent;color:var(--text);text-align:center;font-size:16px;font-weight:800}
+.barcode-qty input::-webkit-inner-spin-button,.barcode-qty input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.barcode-note{display:grid;gap:7px;margin-top:12px;font-size:10px;font-weight:700}
+.barcode-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}
+.barcode-actions .button{min-height:44px}
+.barcode-status{min-height:18px;margin:10px 0 0;font-size:10px;line-height:1.5;color:var(--orange)}
+.barcode-not-found{display:grid;justify-items:center;text-align:center;gap:10px;padding:22px 10px}
+.barcode-not-found-icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--border);font-size:25px}
+.barcode-not-found h3{font-size:21px}
+.barcode-not-found p{font-size:11px;color:var(--muted);line-height:1.6;max-width:48ch}
+@media(max-width:620px){
+  .admin-toolbar-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .admin-toolbar-actions .button{width:100%}
+  .barcode-dialog{width:calc(100vw - 12px)!important;max-width:calc(100vw - 12px)!important;max-height:calc(100dvh - 16px)!important;border-radius:14px!important}
+  .barcode-shell{padding:16px 13px}
+  .barcode-head h2{font-size:23px}
+  .barcode-video-wrap{aspect-ratio:3/4}
+  .barcode-target span{width:88%;height:25%}
+  .barcode-product{grid-template-columns:96px 1fr;gap:12px}
+  .barcode-product-image{height:96px}
+  .barcode-product-info h3{font-size:18px}
+  .barcode-meta{grid-template-columns:1fr 1fr}
+  .barcode-meta span:last-child{grid-column:1/-1}
+  .barcode-stock-summary strong{font-size:19px}
+  .barcode-quantity-block{align-items:stretch;flex-direction:column}
+  .barcode-qty{width:100%;grid-template-columns:52px 1fr 52px}
+  .barcode-actions{display:grid;grid-template-columns:1fr}
+  .barcode-actions .button{width:100%}
+}

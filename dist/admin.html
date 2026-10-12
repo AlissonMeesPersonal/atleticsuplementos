@@ -8,30 +8,37 @@
     (()=>{try{const raw=localStorage.getItem('atletic.theme');let theme=raw;try{theme=JSON.parse(raw)}catch{}if(theme!=='light')document.documentElement.classList.add('theme-dark')}catch{document.documentElement.classList.add('theme-dark')}})();
   </script>
   <title>Gestão | Atletic Suplementos</title>
-  <link rel="stylesheet" href="styles.css?v=20261012-0558">
-  <link rel="stylesheet" href="admin.css?v=20261012-0558">
+  <link rel="stylesheet" href="styles.css?v=20261012-0615">
+  <link rel="stylesheet" href="admin.css?v=20261012-0615">
   <script defer src="store-config.js"></script>
   <script defer src="store-data.js?v=20261008-1155"></script>
   <script defer src="admin-auth.js"></script>
-  <script defer src="admin.js?v=20261012-0558"></script>
+  <script defer src="admin.js?v=20261012-0615"></script>
 </head>
 <body>
   <div class="admin-shell">
-    <aside>
-      <a href="/"><img class="logo" src="assets/logo.svg" alt="Atletic Suplementos"></a>
+    <aside id="adminSidebar" aria-label="Menu administrativo">
+      <div class="admin-sidebar-top">
+        <a href="/"><img class="logo" src="assets/logo.svg" alt="Atletic Suplementos"></a>
+        <button id="adminNavClose" class="admin-nav-close" type="button" aria-label="Fechar menu">×</button>
+      </div>
       <p class="eyebrow">CENTRAL DE GESTÃO</p>
       <nav id="adminNav" aria-label="Administração"></nav>
       <a href="/" class="back-store">↗ Abrir loja</a>
     </aside>
     <main class="admin-main">
       <header>
-        <div><p class="eyebrow">ATLETIC / ADMINISTRATIVO</p><h1 id="pageTitle">Dashboard</h1></div>
+        <div class="admin-title-wrap">
+          <button id="adminNavOpen" class="admin-nav-open" type="button" aria-label="Abrir menu" aria-expanded="false">☰</button>
+          <div><p class="eyebrow">ATLETIC / ADMINISTRATIVO</p><h1 id="pageTitle">Dashboard</h1></div>
+        </div>
         <button id="adminTheme" aria-label="Alternar tema">◐</button>
       </header>
       <div class="setup-notice" id="setupNotice"></div>
       <div id="adminContent"></div>
     </main>
   </div>
+  <button id="adminNavBackdrop" class="admin-nav-backdrop" type="button" aria-label="Fechar menu" tabindex="-1"></button>
 
   <dialog id="editor">
     <form id="editForm">

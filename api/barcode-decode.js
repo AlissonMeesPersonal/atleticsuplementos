@@ -4,6 +4,7 @@ import {
   BinaryBitmap,
   DecodeHintType,
   HybridBinarizer,
+  GlobalHistogramBinarizer,
   MultiFormatReader,
   RGBLuminanceSource
 } from '@zxing/library';
@@ -57,35 +58,39 @@ function readerHints(){
   return hints;
 }
 
-async function decodeVariant(buffer,{rotate=0,crop=false}={}){
+async function processedRaw(buffer,{rotate=0,cropRatio=1,threshold=null,negate=false}={}){
   let pipeline=sharp(buffer,{failOn:'none'}).rotate(rotate);
-  if(crop){
-    const meta=await pipeline.metadata();
-    const width=meta.width||0;
-    const height=meta.height||0;
-    if(width>80&&height>80){
-      const cropHeight=Math.max(80,Math.round(height*.62));
-      const top=Math.max(0,Math.round((height-cropHeight)/2));
-      pipeline=pipeline.extract({left:0,top,width,height:cropHeight});
-    }
+  const meta=await pipeline.metadata();
+  const width=meta.width||0;
+  const height=meta.height||0;
+
+  if(width>80&&height>80&&cropRatio<1){
+    const cropHeight=Math.max(80,Math.round(height*cropRatio));
+    const top=Math.max(0,Math.round((height-cropHeight)/2));
+    pipeline=pipeline.extract({left:0,top,width,height:cropHeight});
   }
 
-  const {data,info}=await pipeline
-    .resize({width:1100,withoutEnlargement:true})
+  pipeline=pipeline
+    .resize({width:1800,withoutEnlargement:false,fit:'inside'})
     .grayscale()
     .normalize()
-    .sharpen()
-    .raw()
-    .toBuffer({resolveWithObject:true});
+    .sharpen({sigma:1.2,m1:1,m2:2});
 
+  if(threshold!==null)pipeline=pipeline.threshold(threshold);
+  if(negate)pipeline=pipeline.negate();
+
+  return pipeline.raw().toBuffer({resolveWithObject:true});
+}
+
+function decodeRaw(data,info,BinarizerClass){
   const luminance=new Uint8ClampedArray(data.buffer,data.byteOffset,data.byteLength);
   const source=new RGBLuminanceSource(luminance,info.width,info.height);
-  const bitmap=new BinaryBitmap(new HybridBinarizer(source));
+  const bitmap=new BinaryBitmap(new BinarizerClass(source));
   const reader=new MultiFormatReader();
-  reader.setHints(readerHints());
-
+  const hints=readerHints();
+  reader.setHints(hints);
   try{
-    const result=reader.decode(bitmap);
+    const result=reader.decodeWithState(bitmap);
     return {
       text:String(result.getText()||'').trim(),
       format:String(result.getBarcodeFormat?.()??'')
@@ -95,13 +100,29 @@ async function decodeVariant(buffer,{rotate=0,crop=false}={}){
   }
 }
 
+async function decodeVariant(buffer,options={}){
+  const {data,info}=await processedRaw(buffer,options);
+
+  for(const BinarizerClass of [GlobalHistogramBinarizer,HybridBinarizer]){
+    try{
+      const result=decodeRaw(data,info,BinarizerClass);
+      if(result?.text)return result;
+    }catch{}
+  }
+  return null;
+}
+
 async function decodeBarcode(buffer){
   const attempts=[
-    {rotate:0,crop:true},
-    {rotate:0,crop:false},
-    {rotate:90,crop:true},
-    {rotate:90,crop:false},
-    {rotate:270,crop:true}
+    {rotate:0,cropRatio:.46},
+    {rotate:0,cropRatio:.64},
+    {rotate:0,cropRatio:1},
+    {rotate:0,cropRatio:.64,threshold:150},
+    {rotate:0,cropRatio:.64,threshold:185},
+    {rotate:0,cropRatio:.64,negate:true},
+    {rotate:90,cropRatio:.64},
+    {rotate:270,cropRatio:.64},
+    {rotate:180,cropRatio:.64}
   ];
 
   for(const attempt of attempts){

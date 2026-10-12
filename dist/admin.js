@@ -262,19 +262,25 @@
                 <select id="barcodeCameraSelect"></select>
               </label>
               <div class="barcode-camera-control-buttons">
-                <button id="barcodeReadNow" class="button" type="button">Ler código agora</button>
+                <button id="barcodeReadNow" class="button" type="button">Capturar código</button>
                 <button id="barcodeRefreshCameras" class="button secondary" type="button">Atualizar câmeras</button>
               </div>
             </div>
-            <p class="barcode-tip">Aponte a câmera para o EAN/GTIN do produto. Você pode escolher webcam, câmera frontal ou traseira.</p>
+            <div class="barcode-photo-actions">
+              <button id="barcodePhotoButton" class="button" type="button">📷 Fotografar código</button>
+              <input id="barcodePhotoInput" type="file" accept="image/*" capture="environment" hidden>
+              <small>Mais confiável no celular: tire uma foto de perto, reta e bem iluminada.</small>
+            </div>
+            <p class="barcode-tip">A leitura ao vivo continua ativa, mas a foto em alta resolução é o método recomendado quando o código não é reconhecido.</p>
           </div>
 
           <form id="barcodeManualForm" class="barcode-manual-form">
-            <label>Ou digite o código
+            <label>Leitor USB/Bluetooth ou código manual
               <div>
-                <input id="barcodeManualCode" inputmode="numeric" autocomplete="off" placeholder="Ex.: 7891234567890">
+                <input id="barcodeManualCode" inputmode="numeric" autocomplete="off" placeholder="Escaneie com o leitor ou digite o EAN">
                 <button class="button secondary" type="submit">Buscar</button>
               </div>
+              <small>Leitores físicos normalmente digitam o código e pressionam Enter automaticamente.</small>
             </label>
           </form>
 
@@ -286,6 +292,13 @@
 
     $('#barcodeClose').onclick=closeBarcodeScanner;
     $('#barcodeEnableCamera').onclick=requestBarcodeCamera;
+    $('#barcodePhotoButton').onclick=()=>$('#barcodePhotoInput').click();
+    $('#barcodePhotoInput').onchange=async event=>{
+      const file=event.target.files?.[0];
+      event.target.value='';
+      if(!file)return;
+      await decodeBarcodePhotoFile(file);
+    };
     $('#barcodeRefreshCameras').onclick=async()=>{await refreshBarcodeCameras()};
     $('#barcodeReadNow').onclick=async()=>{
       const video=$('#barcodeVideo');
@@ -296,30 +309,15 @@
       }
       const button=$('#barcodeReadNow');
       button.disabled=true;
-      button.textContent='Lendo…';
+      button.textContent='Capturando…';
       try{
-        let code='';
-        if(barcodeDetector){
-          try{
-            const codes=await barcodeDetector.detect(video);
-            const hit=codes?.find(item=>validScannedBarcode(item.rawValue));
-            if(hit)code=normalizeScannedBarcode(hit.rawValue);
-          }catch{}
-        }
-        if(!code){
-          const decoded=await decodeBarcodeFrameOnServer(video);
-          if(validScannedBarcode(decoded))code=normalizeScannedBarcode(decoded);
-        }
-        if(code){
-          barcodeCurrentCode=code;
-          await stopBarcodeCamera();
-          await lookupBarcodeStock(code);
-        }else{
-          status.textContent='Não consegui ler este frame. Deixe o código reto, bem iluminado e com as barras ocupando pelo menos metade da largura da câmera.';
+        const code=await captureHighResolutionBarcodeFromCamera();
+        if(!code&&$('#barcodeScanner')?.open){
+          status.textContent='Ainda não consegui ler. Use “Fotografar código” no celular ou aproxime o código e capture novamente.';
         }
       }finally{
         button.disabled=false;
-        button.textContent='Ler código agora';
+        button.textContent='Capturar código';
       }
     };
     $('#barcodeCameraSelect').onchange=async event=>{
@@ -833,16 +831,112 @@
     return /^[A-Z0-9._\/-]{4,40}$/i.test(code);
   }
 
-  function barcodeFrameData(video) {
+  async function imageFileToBarcodeData(file,maxSide=2200) {
+    const url=URL.createObjectURL(file);
+    try{
+      const img=await new Promise((resolve,reject)=>{
+        const image=new Image();
+        image.onload=()=>resolve(image);
+        image.onerror=()=>reject(new Error('Não foi possível abrir a foto.'));
+        image.src=url;
+      });
+
+      const width=img.naturalWidth||img.width;
+      const height=img.naturalHeight||img.height;
+      if(!width||!height)throw new Error('Imagem inválida.');
+
+      const scale=Math.min(1,maxSide/Math.max(width,height));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(width*scale));
+      canvas.height=Math.max(1,Math.round(height*scale));
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      return canvas.toDataURL('image/jpeg',0.92);
+    }finally{
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function decodeBarcodeImageData(image,{statusText='Analisando código…'}={}) {
+    const status=$('#barcodeStatus');
+    status.textContent=statusText;
+
+    try{
+      const response=await fetch('/api/barcode-decode',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+        body:JSON.stringify({image})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||'Não foi possível analisar a imagem.');
+
+      const code=normalizeScannedBarcode(payload.result?.text||'');
+      if(payload.found&&validScannedBarcode(code)){
+        barcodeCurrentCode=code;
+        status.textContent=`Código ${code} identificado. Buscando produto…`;
+        await stopBarcodeCamera();
+        await lookupBarcodeStock(code);
+        return code;
+      }
+
+      status.textContent='Não consegui localizar um código de barras nessa imagem. Tire outra foto mais próxima, reta e sem reflexo.';
+      return null;
+    }catch(error){
+      status.textContent=error.message||'Falha ao analisar o código.';
+      return null;
+    }
+  }
+
+  async function decodeBarcodePhotoFile(file) {
+    const button=$('#barcodePhotoButton');
+    button.disabled=true;
+    button.textContent='Analisando foto…';
+    try{
+      const image=await imageFileToBarcodeData(file);
+      await decodeBarcodeImageData(image,{statusText:'Analisando foto em alta resolução…'});
+    }catch(error){
+      $('#barcodeStatus').textContent=error.message||'Não foi possível analisar a foto.';
+    }finally{
+      button.disabled=false;
+      button.textContent='📷 Fotografar código';
+    }
+  }
+
+  async function captureHighResolutionBarcodeFromCamera() {
+    const video=$('#barcodeVideo');
+    if(!barcodeStream||!video?.videoWidth)return null;
+
+    const track=barcodeStream.getVideoTracks?.()[0];
+    if(track&&'ImageCapture' in window){
+      try{
+        const capture=new ImageCapture(track);
+        const blob=await capture.takePhoto();
+        const image=await imageFileToBarcodeData(blob,2400);
+        const decoded=await decodeBarcodeImageData(image,{statusText:'Analisando captura da webcam em alta resolução…'});
+        if(decoded)return decoded;
+      }catch{}
+    }
+
+    // Fallback: captura três frames para aumentar a chance de foco correto.
+    for(let attempt=0;attempt<3;attempt++){
+      if(attempt)await new Promise(resolve=>setTimeout(resolve,240));
+      const image=barcodeFrameData(video,1600,.94);
+      if(!image)continue;
+      const decoded=await decodeBarcodeImageData(image,{statusText:`Analisando captura ${attempt+1}/3…`});
+      if(decoded)return decoded;
+    }
+    return null;
+  }
+
+  function barcodeFrameData(video,maxWidth=1280,quality=.88) {
     if(!video||video.readyState<2||!video.videoWidth||!video.videoHeight)return '';
     const canvas=document.createElement('canvas');
-    const maxWidth=1280;
     const scale=Math.min(1,maxWidth/video.videoWidth);
     canvas.width=Math.max(1,Math.round(video.videoWidth*scale));
     canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
     const ctx=canvas.getContext('2d');
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    return canvas.toDataURL('image/jpeg',0.88);
+    return canvas.toDataURL('image/jpeg',quality);
   }
 
   async function decodeBarcodeFrameOnServer(video) {
@@ -859,7 +953,8 @@
       });
       const payload=await response.json().catch(()=>({}));
       if(!response.ok)return null;
-      return payload.found?String(payload.result?.text||'').trim():null;
+      const code=normalizeScannedBarcode(payload.result?.text||'');
+      return payload.found&&validScannedBarcode(code)?code:null;
     }catch{
       return null;
     }finally{
@@ -1158,6 +1253,7 @@
     if(!dialog.open)dialog.showModal();
     document.body.style.overflow='hidden';
     prepareBarcodeCamera();
+    if(!isMobileLike())setTimeout(()=>$('#barcodeManualCode')?.focus(),120);
   }
 
   function toolbar(label, allowNew = true) {

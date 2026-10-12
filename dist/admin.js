@@ -237,9 +237,16 @@
 
           <div id="barcodeCameraPanel" class="barcode-camera-panel">
             <div class="barcode-video-wrap">
-              <video id="barcodeVideo" playsinline muted></video>
+              <video id="barcodeVideo" playsinline webkit-playsinline autoplay muted></video>
               <div class="barcode-target" aria-hidden="true"><span></span></div>
-              <div id="barcodeCameraMessage" class="barcode-camera-message">Preparando a câmera…</div>
+              <div id="barcodePermission" class="barcode-permission">
+                <div class="barcode-permission-icon">▦</div>
+                <h3>Permitir acesso à câmera</h3>
+                <p id="barcodePermissionText">A Atletic precisa usar a câmera traseira para ler o código de barras do produto.</p>
+                <button id="barcodeEnableCamera" class="button" type="button">Ativar câmera</button>
+                <small id="barcodePermissionHelp">Ao tocar no botão, o navegador solicitará sua autorização.</small>
+              </div>
+              <div id="barcodeCameraMessage" class="barcode-camera-message" hidden></div>
             </div>
             <p class="barcode-tip">Aponte a câmera traseira para o EAN/GTIN do produto. O sistema busca primeiro no Supabase/Olist e depois nos cadastros locais.</p>
           </div>
@@ -260,6 +267,7 @@
     `);
 
     $('#barcodeClose').onclick=closeBarcodeScanner;
+    $('#barcodeEnableCamera').onclick=requestBarcodeCamera;
     $('#barcodeScanner').addEventListener('close',stopBarcodeCamera);
     $('#barcodeScanner').addEventListener('click',event=>{if(event.target===$('#barcodeScanner'))closeBarcodeScanner()});
     $('#barcodeManualForm').onsubmit=event=>{
@@ -271,28 +279,102 @@
     };
   }
 
+  function showBarcodePermission({state='prompt',text='',help='',button='Ativar câmera'}={}) {
+    const box=$('#barcodePermission');
+    const message=$('#barcodeCameraMessage');
+    if(!box)return;
+    box.hidden=false;
+    message.hidden=true;
+    $('#barcodePermissionText').textContent=text||(
+      state==='denied'
+        ? 'A câmera está bloqueada para este site.'
+        : 'A Atletic precisa usar a câmera traseira para ler o código de barras do produto.'
+    );
+    $('#barcodePermissionHelp').textContent=help||(
+      state==='denied'
+        ? 'Abra as permissões do site no navegador, habilite Câmera e depois toque em “Tentar novamente”.'
+        : 'Ao tocar no botão, o navegador solicitará sua autorização.'
+    );
+    const buttonEl=$('#barcodeEnableCamera');
+    buttonEl.textContent=button;
+    buttonEl.disabled=false;
+    box.dataset.state=state;
+  }
+
+  async function barcodeCameraPermissionState() {
+    if(!navigator.permissions?.query)return 'prompt';
+    try{
+      const permission=await navigator.permissions.query({name:'camera'});
+      return permission?.state||'prompt';
+    }catch{
+      return 'prompt';
+    }
+  }
+
+  async function prepareBarcodeCamera() {
+    stopBarcodeCamera();
+    $('#barcodeCameraPanel').hidden=false;
+    $('#barcodeResult').hidden=true;
+    $('#barcodeStatus').textContent='';
+    const message=$('#barcodeCameraMessage');
+
+    if(!navigator.mediaDevices?.getUserMedia){
+      showBarcodePermission({
+        state:'unsupported',
+        text:'Este navegador não disponibiliza acesso à câmera.',
+        help:'Você ainda pode digitar o código de barras manualmente abaixo.',
+        button:'Câmera indisponível'
+      });
+      $('#barcodeEnableCamera').disabled=true;
+      return;
+    }
+
+    const state=await barcodeCameraPermissionState();
+    if(state==='granted'){
+      await startBarcodeCamera();
+      return;
+    }
+    if(state==='denied'){
+      showBarcodePermission({
+        state:'denied',
+        text:'A permissão da câmera está bloqueada neste navegador.',
+        help:'Toque no cadeado/ícone ao lado do endereço do site → Permissões → Câmera → Permitir. Depois volte e toque em “Tentar novamente”.',
+        button:'Tentar novamente'
+      });
+      return;
+    }
+    showBarcodePermission();
+  }
+
+  async function requestBarcodeCamera() {
+    const button=$('#barcodeEnableCamera');
+    button.disabled=true;
+    button.textContent='Aguardando permissão…';
+    await startBarcodeCamera();
+  }
+
   async function startBarcodeCamera() {
     stopBarcodeCamera();
     const message=$('#barcodeCameraMessage');
     const video=$('#barcodeVideo');
+    const permissionBox=$('#barcodePermission');
     $('#barcodeCameraPanel').hidden=false;
     $('#barcodeResult').hidden=true;
     $('#barcodeStatus').textContent='';
 
     if(!navigator.mediaDevices?.getUserMedia){
-      message.textContent='Este navegador não disponibiliza acesso à câmera. Digite o código abaixo.';
-      return;
-    }
-    if(!('BarcodeDetector' in window)){
-      message.textContent='Leitura automática indisponível neste navegador. Use Chrome/Edge no celular ou digite o código abaixo.';
+      showBarcodePermission({
+        state:'unsupported',
+        text:'Este navegador não disponibiliza acesso à câmera.',
+        help:'Digite o código de barras manualmente abaixo.',
+        button:'Câmera indisponível'
+      });
+      $('#barcodeEnableCamera').disabled=true;
       return;
     }
 
     try{
-      const supported=BarcodeDetector.getSupportedFormats?await BarcodeDetector.getSupportedFormats():[];
-      const preferred=['ean_13','ean_8','upc_a','upc_e','code_128'];
-      const formats=supported.length?preferred.filter(format=>supported.includes(format)):preferred;
-      barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
+      // Esta chamada é o que dispara a solicitação nativa de permissão do navegador.
       barcodeStream=await navigator.mediaDevices.getUserMedia({
         video:{
           facingMode:{ideal:'environment'},
@@ -301,15 +383,53 @@
         },
         audio:false
       });
+
+      permissionBox.hidden=true;
       video.srcObject=barcodeStream;
+      video.setAttribute('playsinline','');
+      video.setAttribute('webkit-playsinline','');
+      video.muted=true;
       await video.play();
-      message.textContent='Centralize o código de barras dentro da marcação.';
+
+      message.hidden=false;
+
+      if(!('BarcodeDetector' in window)){
+        message.textContent='Câmera autorizada. Este navegador não possui leitura automática nativa; use o campo abaixo para informar o código.';
+        return;
+      }
+
+      const supported=BarcodeDetector.getSupportedFormats?await BarcodeDetector.getSupportedFormats():[];
+      const preferred=['ean_13','ean_8','upc_a','upc_e','code_128'];
+      const formats=supported.length?preferred.filter(format=>supported.includes(format)):preferred;
+      barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
+
+      message.textContent='Câmera ativa — centralize o código de barras dentro da marcação.';
       barcodeBusy=false;
       barcodeScanFrame();
     }catch(error){
-      message.textContent=error?.name==='NotAllowedError'
-        ? 'Permissão da câmera negada. Libere a câmera para este site ou digite o código abaixo.'
-        : 'Não foi possível iniciar a câmera. Você ainda pode digitar o código abaixo.';
+      stopBarcodeCamera();
+      if(error?.name==='NotAllowedError'||error?.name==='PermissionDeniedError'){
+        showBarcodePermission({
+          state:'denied',
+          text:'O navegador não recebeu permissão para usar a câmera.',
+          help:'Se você tocou em “Bloquear”, abra as permissões deste site, altere Câmera para “Permitir” e tente novamente.',
+          button:'Tentar novamente'
+        });
+      }else if(error?.name==='NotFoundError'||error?.name==='DevicesNotFoundError'){
+        showBarcodePermission({
+          state:'unavailable',
+          text:'Nenhuma câmera foi encontrada neste dispositivo.',
+          help:'Você pode digitar o código de barras manualmente abaixo.',
+          button:'Tentar novamente'
+        });
+      }else{
+        showBarcodePermission({
+          state:'error',
+          text:'Não foi possível iniciar a câmera.',
+          help:error?.message||'Verifique a permissão da câmera e tente novamente.',
+          button:'Tentar novamente'
+        });
+      }
     }
   }
 
@@ -410,7 +530,7 @@
     qty.oninput=updateProjection;
     $('#barcodeQtyMinus').onclick=()=>{qty.value=Math.max(1,Number(qty.value||1)-1);updateProjection()};
     $('#barcodeQtyPlus').onclick=()=>{qty.value=Number(qty.value||1)+1;updateProjection()};
-    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;startBarcodeCamera()};
+    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;prepareBarcodeCamera()};
     $('#barcodeReceive').onclick=receiveBarcodeStock;
     setTimeout(()=>qty.focus(),80);
   }
@@ -431,7 +551,7 @@
         </div>
       </div>
     `;
-    $('#barcodeTryAgain').onclick=()=>{barcodeCurrentCode='';startBarcodeCamera()};
+    $('#barcodeTryAgain').onclick=()=>{barcodeCurrentCode='';prepareBarcodeCamera()};
     $('#barcodeCreateProduct').onclick=()=>createProductFromBarcode(code);
   }
 
@@ -563,7 +683,7 @@
     const dialog=$('#barcodeScanner');
     if(!dialog.open)dialog.showModal();
     document.body.style.overflow='hidden';
-    startBarcodeCamera();
+    prepareBarcodeCamera();
   }
 
   function toolbar(label, allowNew = true) {

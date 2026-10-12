@@ -2422,6 +2422,22 @@
     $('#resetDemo').onclick=()=>{if(confirm('Restaurar todos os dados demonstrativos deste navegador?')){AtleticStore.reset();refresh();render();notify('Dados de demonstração restaurados.')}};
   }
 
+  function adminNavIsMobile() {
+    return window.matchMedia('(max-width: 920px)').matches;
+  }
+
+  function openAdminNav() {
+    if(!adminNavIsMobile())return;
+    document.body.classList.add('admin-nav-open');
+    $('#adminNavOpen')?.setAttribute('aria-expanded','true');
+    $('#adminNavClose')?.focus({preventScroll:true});
+  }
+
+  function closeAdminNav() {
+    document.body.classList.remove('admin-nav-open');
+    $('#adminNavOpen')?.setAttribute('aria-expanded','false');
+  }
+
   function render() {
     refresh(); notice();
     document.querySelectorAll('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
@@ -2861,7 +2877,7 @@
   });
 
   document.addEventListener('click', event => {
-    const nav=event.target.closest('[data-page]'); if(nav){page=nav.dataset.page;render();return;}
+    const nav=event.target.closest('[data-page]'); if(nav){page=nav.dataset.page;closeAdminNav();render();return;}
     const edit=event.target.closest('[data-edit]'); if(edit){openEditor(edit.dataset.edit);return;}
     const del=event.target.closest('[data-delete]'); if(del){const id=del.dataset.delete;if(!confirm('Excluir este cadastro de demonstração?'))return;
       if(page==='products'){const variantIds=data.variants.filter(v=>v.productId===id).map(v=>v.id); if(data.stock.some(m=>variantIds.includes(m.variantId))){notify('Este produto tem histórico de estoque. Desative-o em vez de excluir.');return;} data.products=data.products.filter(x=>x.id!==id);data.variants=data.variants.filter(x=>x.productId!==id);}
@@ -3007,6 +3023,13 @@
   $('#searchImages').onclick=searchImages;
   $('#importLegacyImages').onclick=importLegacyImages;
   $('#closeEditor').onclick=()=>$('#editor').close();
+
+  $('#adminNavOpen').onclick=openAdminNav;
+  $('#adminNavClose').onclick=closeAdminNav;
+  $('#adminNavBackdrop').onclick=closeAdminNav;
+  window.addEventListener('resize',()=>{if(!adminNavIsMobile())closeAdminNav()});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.body.classList.contains('admin-nav-open'))closeAdminNav()});
+
   applyTheme(readTheme());
   $('#adminTheme').onclick=()=>{
     const next=document.body.classList.contains('dark')?'light':'dark';

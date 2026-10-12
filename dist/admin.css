@@ -282,3 +282,10 @@
   .barcode-camera-controls label{font-size:11px}
   .barcode-camera-controls select{font-size:12px}
 }
+
+.barcode-camera-control-buttons{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.barcode-camera-control-buttons .button{min-height:42px}
+@media(max-width:620px){
+  .barcode-camera-control-buttons{display:grid;grid-template-columns:1fr}
+  .barcode-camera-control-buttons .button{width:100%}
+}

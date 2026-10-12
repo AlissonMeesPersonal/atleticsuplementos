@@ -1797,10 +1797,446 @@
     await loadCustomers();
   }
 
-  function renderOrders() {
-    $('#adminContent').innerHTML = toolbar('Pedidos', false);
-    const rows=data.orders||[];
-    $('#records').innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th>Total</th><th>Data</th></tr></thead><tbody>${rows.map(o=>`<tr><td>${esc(o.id)}</td><td>${esc(data.customers.find(c=>c.id===o.customerId)?.name||'—')}</td><td><span class="badge">${esc(o.status)}</span></td><td>${money(o.total)}</td><td>${esc(o.createdAt||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-panel"><h2>Pedidos</h2><p>Checkout e pedidos reais ficam bloqueados até o servidor validar preço, cupom, frete, reserva de estoque e pagamento. O schema já possui as tabelas necessárias.</p></div>';
+  function orderDate(value) {
+    if(!value)return '—';
+    const date=new Date(value);
+    return Number.isNaN(date.getTime())?'—':date.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+  }
+
+  function orderStatusLabel(value='') {
+    const map={
+      pending:'Pendente',
+      processing:'Em preparação',
+      ready_to_ship:'Pronto para postar',
+      shipped:'Postado',
+      delivered:'Entregue',
+      cancelled:'Cancelado',
+      paid:'Pago',
+      unpaid:'Aguardando pagamento',
+      refunded:'Reembolsado',
+      not_generated:'Etiqueta pendente',
+      generated:'Etiqueta gerada'
+    };
+    return map[value]||String(value||'—').replaceAll('_',' ');
+  }
+
+  function orderStatusClass(value='') {
+    if(['paid','delivered','generated'].includes(value))return 'success';
+    if(['ready_to_ship','processing','shipped'].includes(value))return 'attention';
+    if(['cancelled','refunded'].includes(value))return 'danger';
+    return 'neutral';
+  }
+
+  function orderAddressText(address={}) {
+    const line1=[address.street,address.number,address.complement].filter(Boolean).join(', ');
+    const line2=[address.neighborhood,address.city,address.state].filter(Boolean).join(' · ');
+    const line3=address.postal_code?`CEP ${address.postal_code}`:'';
+    return [line1,line2,line3].filter(Boolean).join(' — ');
+  }
+
+  async function orderAdminRequest(path='',options={}) {
+    const response=await fetch(`/api/admin-orders${path}`,{
+      ...options,
+      headers:{
+        ...(options.body?{'Content-Type':'application/json'}:{}),
+        Authorization:`Bearer ${adminToken()}`,
+        ...(options.headers||{})
+      }
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||'Não foi possível carregar os pedidos.');
+    return payload;
+  }
+
+  async function importOrdersFromOlist() {
+    const button=$('#ordersImportOlist');
+    const status=$('#ordersSyncStatus');
+    if(!button||!status)return;
+    button.disabled=true;
+    button.textContent='Atualizando…';
+    status.textContent='Consultando pedidos na Olist…';
+
+    let pageNumber=1;
+    let totalPages=1;
+    let imported=0;
+    let errors=0;
+    try{
+      do{
+        const listing=await olistImportRequest('list_orders',{page:pageNumber});
+        totalPages=Math.max(1,Number(listing.totalPages||1));
+        const items=Array.isArray(listing.items)?listing.items:[];
+        for(let index=0;index<items.length;index++){
+          const item=items[index];
+          status.textContent=`Olist: página ${pageNumber}/${totalPages} · ${index+1}/${items.length} · ${imported} atualizados · ${errors} erros`;
+          try{
+            await olistImportRequest('import_order',{id:item.id});
+            imported++;
+          }catch{
+            errors++;
+          }
+          await importPause(100);
+        }
+        pageNumber++;
+      }while(pageNumber<=totalPages);
+      status.textContent=`Concluído: ${imported} pedidos importados/atualizados e ${errors} erros.`;
+      await renderOrders();
+    }catch(error){
+      status.textContent=`Falha na atualização: ${error.message}`;
+    }finally{
+      button.disabled=false;
+      button.textContent='Atualizar pedidos da Olist';
+    }
+  }
+
+  async function openOrderDetail(orderId) {
+    let dialog=$('#orderDetailDialog');
+    if(!dialog){
+      document.body.insertAdjacentHTML('beforeend',`
+        <dialog id="orderDetailDialog" class="order-dialog">
+          <div class="order-dialog-shell">
+            <header class="order-dialog-head">
+              <div><p class="eyebrow">PEDIDO / EXPEDIÇÃO</p><h2 id="orderDetailTitle">Carregando…</h2></div>
+              <button id="orderDetailClose" type="button" aria-label="Fechar">×</button>
+            </header>
+            <div id="orderDetailBody"><div class="empty-panel">Carregando pedido…</div></div>
+          </div>
+        </dialog>
+      `);
+      dialog=$('#orderDetailDialog');
+      $('#orderDetailClose').onclick=()=>dialog.close();
+      dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    }
+
+    $('#orderDetailTitle').textContent='Carregando…';
+    $('#orderDetailBody').innerHTML='<div class="empty-panel">Carregando pedido…</div>';
+    if(!dialog.open)dialog.showModal();
+
+    try{
+      const payload=await orderAdminRequest(`?id=${encodeURIComponent(orderId)}`);
+      const order=payload.order||{};
+      const items=payload.items||[];
+      const calculated=payload.calculatedPackage||{};
+      const address=order.shipping_address&&typeof order.shipping_address==='object'?order.shipping_address:{};
+
+      $('#orderDetailTitle').textContent=order.order_number||'Pedido';
+      $('#orderDetailBody').innerHTML=`
+        <div class="order-status-strip">
+          <span class="order-state ${orderStatusClass(order.payment_status)}">Pagamento: ${esc(orderStatusLabel(order.payment_status))}</span>
+          <span class="order-state ${orderStatusClass(order.fulfillment_status)}">Expedição: ${esc(orderStatusLabel(order.fulfillment_status))}</span>
+          <span class="order-state ${orderStatusClass(order.shipping_label_status)}">Etiqueta: ${esc(orderStatusLabel(order.shipping_label_status))}</span>
+          ${order.invoice_number?`<span class="order-state success">NF ${esc(order.invoice_number)}</span>`:''}
+        </div>
+
+        <div class="order-detail-grid">
+          <section class="order-detail-card">
+            <span class="order-detail-label">Cliente</span>
+            <div class="order-data-grid">
+              <div><small>Nome</small><strong>${esc(order.customer_name||address.recipient_name||'—')}</strong></div>
+              <div><small>Telefone</small><strong>${esc(order.customer_phone||'—')}</strong></div>
+              <div><small>E-mail</small><strong>${esc(order.customer_email||'—')}</strong></div>
+              <div><small>Data do pedido</small><strong>${orderDate(order.placed_at||order.created_at)}</strong></div>
+            </div>
+          </section>
+
+          <section class="order-detail-card">
+            <span class="order-detail-label">Pagamento</span>
+            <div class="order-data-grid">
+              <div><small>Método</small><strong>${esc(order.payment_method||'—')}</strong></div>
+              <div><small>Provedor</small><strong>${esc(order.payment_provider||'—')}</strong></div>
+              <div><small>Subtotal</small><strong>${dbMoney(order.subtotal)}</strong></div>
+              <div><small>Frete</small><strong>${dbMoney(order.shipping_total)}</strong></div>
+              <div><small>Desconto</small><strong>${dbMoney(order.discount_total)}</strong></div>
+              <div><small>Total</small><strong>${dbMoney(order.total)}</strong></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="order-detail-card">
+          <div class="order-card-title-row">
+            <div><span class="order-detail-label">Itens do pedido</span><strong>${items.reduce((sum,item)=>sum+Number(item.quantity||0),0)} unidade(s)</strong></div>
+          </div>
+          <div class="order-items-list">
+            ${items.length?items.map(item=>`
+              <article>
+                <div>
+                  <strong>${esc(item.product_name||'Produto')}</strong>
+                  <small>${esc([item.variant_name,item.sku].filter(Boolean).join(' · ')||'Sem variação')}</small>
+                </div>
+                <span>${Number(item.quantity||0)}x</span>
+                <strong>${dbMoney(item.line_total)}</strong>
+              </article>
+            `).join(''):'<p class="muted">Nenhum item registrado.</p>'}
+          </div>
+        </section>
+
+        <section class="order-detail-card order-shipping-card">
+          <div class="order-card-title-row">
+            <div><span class="order-detail-label">Entrega / postagem</span><strong>Dados para expedição</strong></div>
+            <button id="copyShippingAddress" class="button secondary" type="button">Copiar endereço</button>
+          </div>
+
+          <div class="order-shipping-address">
+            <strong>${esc(address.recipient_name||order.customer_name||'Destinatário')}</strong>
+            <p>${esc([address.street,address.number,address.complement].filter(Boolean).join(', ')||'Endereço não informado')}</p>
+            <p>${esc([address.neighborhood,address.city,address.state].filter(Boolean).join(' · '))}</p>
+            <p>${address.postal_code?`CEP ${esc(address.postal_code)}`:''}</p>
+          </div>
+
+          <div class="order-form-grid">
+            <label>Transportadora
+              <input id="orderCarrier" value="${esc(order.shipping_carrier||'')}" placeholder="Ex.: Correios, Jadlog, Loggi">
+            </label>
+            <label>Serviço
+              <input id="orderService" value="${esc(order.shipping_service_name||order.shipping_method||'')}" placeholder="Ex.: PAC, SEDEX">
+            </label>
+            <label>Código do serviço
+              <input id="orderServiceCode" value="${esc(order.shipping_service_code||'')}" placeholder="Código interno">
+            </label>
+            <label>Código de rastreio
+              <input id="orderTrackingCode" value="${esc(order.tracking_code||'')}" placeholder="Rastreio">
+            </label>
+            <label class="span-2">URL de rastreio
+              <input id="orderTrackingUrl" value="${esc(order.tracking_url||'')}" placeholder="https://...">
+            </label>
+            <label>Prazo de postagem
+              <input id="orderShippingDeadline" type="datetime-local" value="${order.shipping_deadline?new Date(order.shipping_deadline).toISOString().slice(0,16):''}">
+            </label>
+            <label>Previsão de entrega
+              <input id="orderEstimatedDelivery" type="datetime-local" value="${order.shipping_estimated_delivery?new Date(order.shipping_estimated_delivery).toISOString().slice(0,16):''}">
+            </label>
+          </div>
+
+          <div class="order-package">
+            <div class="order-package-head">
+              <div><span class="order-detail-label">Pacote para postagem</span><strong>Dimensões e peso</strong></div>
+              <button id="fillCalculatedPackage" class="button secondary" type="button">Usar cálculo dos produtos</button>
+            </div>
+            <div class="order-form-grid package-fields">
+              <label>Peso (g)
+                <input id="orderPackageWeight" type="number" min="0" value="${esc(order.package_weight_g||'')}" placeholder="${Math.round(calculated.weightG||0)||0}">
+              </label>
+              <label>Comprimento (cm)
+                <input id="orderPackageLength" type="number" min="0" step="0.1" value="${esc(order.package_length_cm||'')}" placeholder="${Number(calculated.maxLengthCm||0).toFixed(1)}">
+              </label>
+              <label>Largura (cm)
+                <input id="orderPackageWidth" type="number" min="0" step="0.1" value="${esc(order.package_width_cm||'')}" placeholder="${Number(calculated.maxWidthCm||0).toFixed(1)}">
+              </label>
+              <label>Altura (cm)
+                <input id="orderPackageHeight" type="number" min="0" step="0.1" value="${esc(order.package_height_cm||'')}" placeholder="${Number(calculated.totalHeightCm||0).toFixed(1)}">
+              </label>
+            </div>
+            <small class="muted">O cálculo automático usa as dimensões cadastradas nas variações. Para a etiqueta final, ajuste conforme a embalagem real.</small>
+          </div>
+
+          <label class="order-shipping-notes">Observação de expedição
+            <textarea id="orderShippingNotes" rows="3" placeholder="Ex.: embalar com plástico bolha, retirar na loja, cuidado com avaria…">${esc(order.shipping_notes||'')}</textarea>
+          </label>
+        </section>
+
+        <section class="order-detail-card">
+          <span class="order-detail-label">Etiqueta de envio</span>
+          <div class="order-label-row">
+            <div>
+              <strong>${order.shipping_label_status==='generated'?'Etiqueta gerada':'Etiqueta ainda não gerada'}</strong>
+              <small>${order.shipping_label_url?'Arquivo disponível para impressão.':'A integração com a transportadora poderá gerar a etiqueta automaticamente nesta área.'}</small>
+            </div>
+            ${order.shipping_label_url?`<a class="button secondary" href="${esc(order.shipping_label_url)}" target="_blank" rel="noopener">Abrir etiqueta</a>`:''}
+          </div>
+        </section>
+
+        <section class="order-detail-card">
+          <span class="order-detail-label">Atualização operacional</span>
+          <div class="order-action-grid">
+            <button id="orderSaveShipping" class="button" type="button">Salvar dados de expedição</button>
+            <button id="orderReady" class="button secondary" type="button">Marcar pronto para postar</button>
+            <button id="orderShipped" class="button secondary" type="button">Marcar como postado</button>
+            <button id="orderDelivered" class="button secondary" type="button">Marcar como entregue</button>
+          </div>
+          <p id="orderDetailStatus" class="integration-output"></p>
+        </section>
+      `;
+
+      $('#copyShippingAddress').onclick=async()=>{
+        const text=[
+          address.recipient_name||order.customer_name,
+          [address.street,address.number,address.complement].filter(Boolean).join(', '),
+          [address.neighborhood,address.city,address.state].filter(Boolean).join(' - '),
+          address.postal_code?`CEP ${address.postal_code}`:''
+        ].filter(Boolean).join('\n');
+        await navigator.clipboard.writeText(text);
+        notify('Endereço copiado.');
+      };
+
+      $('#fillCalculatedPackage').onclick=()=>{
+        if(calculated.weightG)$('#orderPackageWeight').value=Math.round(calculated.weightG);
+        if(calculated.maxLengthCm)$('#orderPackageLength').value=Number(calculated.maxLengthCm).toFixed(1);
+        if(calculated.maxWidthCm)$('#orderPackageWidth').value=Number(calculated.maxWidthCm).toFixed(1);
+        if(calculated.totalHeightCm)$('#orderPackageHeight').value=Number(calculated.totalHeightCm).toFixed(1);
+        notify('Dimensões calculadas preenchidas.');
+      };
+
+      const saveOrder=async(extra={})=>{
+        const status=$('#orderDetailStatus');
+        status.className='integration-output';
+        status.textContent='Salvando…';
+        try{
+          await orderAdminRequest('',{
+            method:'POST',
+            body:JSON.stringify({
+              action:'update',
+              id:order.id,
+              shipping_carrier:$('#orderCarrier').value,
+              shipping_service_name:$('#orderService').value,
+              shipping_method:$('#orderService').value,
+              shipping_service_code:$('#orderServiceCode').value,
+              tracking_code:$('#orderTrackingCode').value,
+              tracking_url:$('#orderTrackingUrl').value,
+              shipping_deadline:$('#orderShippingDeadline').value,
+              shipping_estimated_delivery:$('#orderEstimatedDelivery').value,
+              package_weight_g:$('#orderPackageWeight').value,
+              package_length_cm:$('#orderPackageLength').value,
+              package_width_cm:$('#orderPackageWidth').value,
+              package_height_cm:$('#orderPackageHeight').value,
+              shipping_notes:$('#orderShippingNotes').value,
+              ...extra
+            })
+          });
+          status.className='integration-output success';
+          status.textContent='Pedido atualizado com sucesso.';
+          await renderOrders();
+        }catch(error){
+          status.className='integration-output error';
+          status.textContent=error.message;
+        }
+      };
+
+      $('#orderSaveShipping').onclick=()=>saveOrder();
+      $('#orderReady').onclick=()=>saveOrder({markReady:true});
+      $('#orderShipped').onclick=()=>{
+        if(!$('#orderTrackingCode').value.trim()&&!confirm('Este pedido ainda não tem código de rastreio. Marcar como postado mesmo assim?'))return;
+        saveOrder({markShipped:true});
+      };
+      $('#orderDelivered').onclick=()=>saveOrder({markDelivered:true});
+    }catch(error){
+      $('#orderDetailBody').innerHTML=`<div class="empty-panel">${esc(error.message)}</div>`;
+    }
+  }
+
+  async function renderOrders() {
+    $('#adminContent').innerHTML=`
+      <div class="orders-page">
+        <div class="orders-page-head">
+          <div>
+            <p class="eyebrow">VENDAS / EXPEDIÇÃO</p>
+            <h2>Pedidos</h2>
+            <p class="muted">Acompanhe pagamento, separação, frete, postagem, rastreio e entrega em uma única tela.</p>
+          </div>
+          <button id="ordersImportOlist" class="button secondary" type="button">Atualizar pedidos da Olist</button>
+        </div>
+
+        <div id="ordersMetrics" class="admin-cards orders-metrics">
+          <div class="admin-card"><span>Total de pedidos</span><strong>—</strong></div>
+          <div class="admin-card"><span>Pagos</span><strong>—</strong></div>
+          <div class="admin-card"><span>Prontos para postar</span><strong>—</strong></div>
+          <div class="admin-card"><span>Etiquetas pendentes</span><strong>—</strong></div>
+        </div>
+
+        <div class="orders-toolbar">
+          <input id="ordersSearch" type="search" placeholder="Buscar pedido, cliente, rastreio, e-mail, telefone ou cidade">
+          <select id="ordersPaymentFilter">
+            <option value="">Todos os pagamentos</option>
+            <option value="paid">Pago</option>
+            <option value="pending">Pendente</option>
+            <option value="unpaid">Não pago</option>
+            <option value="refunded">Reembolsado</option>
+          </select>
+          <select id="ordersFulfillmentFilter">
+            <option value="">Toda expedição</option>
+            <option value="pending">Pendente</option>
+            <option value="ready_to_ship">Pronto para postar</option>
+            <option value="shipped">Postado</option>
+            <option value="delivered">Entregue</option>
+          </select>
+          <select id="ordersShippingFilter">
+            <option value="">Todos os fretes</option>
+            <option value="with_tracking">Com rastreio</option>
+            <option value="without_tracking">Sem rastreio</option>
+            <option value="label_pending">Etiqueta pendente</option>
+          </select>
+        </div>
+
+        <p id="ordersSyncStatus" class="integration-output"></p>
+        <div id="ordersRecords"><div class="empty-panel">Carregando pedidos…</div></div>
+      </div>
+    `;
+
+    $('#ordersImportOlist').onclick=importOrdersFromOlist;
+
+    let debounce=null;
+    const loadOrders=async()=>{
+      $('#ordersRecords').innerHTML='<div class="empty-panel">Carregando pedidos…</div>';
+      try{
+        const params=new URLSearchParams();
+        const q=$('#ordersSearch').value.trim();
+        const payment=$('#ordersPaymentFilter').value;
+        const fulfillment=$('#ordersFulfillmentFilter').value;
+        const shipping=$('#ordersShippingFilter').value;
+        if(q)params.set('q',q);
+        if(payment)params.set('payment',payment);
+        if(fulfillment)params.set('fulfillment',fulfillment);
+        if(shipping)params.set('shipping',shipping);
+
+        const payload=await orderAdminRequest(params.toString()?`?${params.toString()}`:'');
+        const rows=payload.orders||[];
+        const metrics=payload.metrics||{};
+
+        $('#ordersMetrics').innerHTML=`
+          <div class="admin-card"><span>Total de pedidos</span><strong>${Number(metrics.total||0)}</strong><small>${Number(metrics.shipped||0)} postados</small></div>
+          <div class="admin-card"><span>Pagos</span><strong>${Number(metrics.paid||0)}</strong><small>liberados para operação</small></div>
+          <div class="admin-card"><span>Prontos para postar</span><strong>${Number(metrics.readyToShip||0)}</strong><small>aguardando expedição</small></div>
+          <div class="admin-card"><span>Etiquetas pendentes</span><strong>${Number(metrics.labelPending||0)}</strong><small>${Number(metrics.delivered||0)} entregues</small></div>
+        `;
+
+        $('#ordersRecords').innerHTML=rows.length?`
+          <div class="table-wrap orders-table-wrap">
+            <table class="orders-table">
+              <thead><tr><th>Pedido</th><th>Cliente</th><th>Pagamento</th><th>Expedição</th><th>Frete</th><th>Destino</th><th>Rastreio</th><th>Total</th><th>Data</th></tr></thead>
+              <tbody>
+                ${rows.map(order=>`
+                  <tr data-order-id="${esc(order.id)}">
+                    <td><strong>${esc(order.order_number||order.id)}</strong><br><small>${esc(order.erp_provider==='olist_erp'?'Olist ERP':'Loja')}</small></td>
+                    <td><strong>${esc(order.customer_name||'—')}</strong><br><small>${esc(order.customer_email||order.customer_phone||'')}</small></td>
+                    <td><span class="order-state ${orderStatusClass(order.payment_status)}">${esc(orderStatusLabel(order.payment_status))}</span></td>
+                    <td><span class="order-state ${orderStatusClass(order.fulfillment_status)}">${esc(orderStatusLabel(order.fulfillment_status))}</span></td>
+                    <td><strong>${esc(order.shipping_service_name||order.shipping_method||'—')}</strong><br><small>${dbMoney(order.shipping_total)}</small></td>
+                    <td><strong>${esc([order.destination?.city,order.destination?.state].filter(Boolean).join(' / ')||'—')}</strong><br><small>${esc(order.destination?.postalCode||'')}</small></td>
+                    <td>${order.tracking_code?`<strong>${esc(order.tracking_code)}</strong>`:'<span class="muted">Sem rastreio</span>'}</td>
+                    <td><strong>${dbMoney(order.total)}</strong></td>
+                    <td>${orderDate(order.placed_at||order.created_at)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `:'<div class="empty-panel"><h2>Nenhum pedido encontrado</h2><p>Use “Atualizar pedidos da Olist” para trazer pedidos históricos ou aguarde os novos pedidos da loja.</p></div>';
+
+        document.querySelectorAll('[data-order-id]').forEach(row=>{
+          row.onclick=()=>openOrderDetail(row.dataset.orderId);
+        });
+      }catch(error){
+        $('#ordersRecords').innerHTML=`<div class="empty-panel">${esc(error.message)}</div>`;
+      }
+    };
+
+    $('#ordersSearch').oninput=()=>{
+      clearTimeout(debounce);
+      debounce=setTimeout(loadOrders,250);
+    };
+    $('#ordersPaymentFilter').onchange=loadOrders;
+    $('#ordersFulfillmentFilter').onchange=loadOrders;
+    $('#ordersShippingFilter').onchange=loadOrders;
+
+    await loadOrders();
   }
 
   async function renderImageLibrary() {

@@ -1301,10 +1301,332 @@
     $('#records').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>` : '<div class="empty-panel">Nenhum registro encontrado.</div>';
   }
 
-  function renderCustomers() {
-    $('#adminContent').innerHTML = toolbar('Clientes', false);
-    const rows=data.customers||[];
-    $('#records').innerHTML=rows.length?`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Contato</th><th>Pedidos</th><th>Cadastro</th></tr></thead><tbody>${rows.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.email||'—')}<br><small>${esc(c.phone||'—')}</small></td><td>${data.orders.filter(o=>o.customerId===c.id).length}</td><td>${esc(c.createdAt||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-panel"><h2>Clientes</h2><p>O módulo está estruturado, mas dados pessoais reais só serão habilitados após Supabase Auth + RLS. Isso evita armazenar clientes no navegador.</p></div>';
+  function customerDate(value) {
+    if(!value)return '—';
+    const date=new Date(value);
+    return Number.isNaN(date.getTime())?'—':date.toLocaleDateString('pt-BR');
+  }
+
+  function customerOrigin(row) {
+    if(row.source_provider==='olist_erp')return 'OLIST';
+    if(row.auth_user_id)return 'LOJA';
+    return 'CADASTRO';
+  }
+
+  function maskCpf(value='') {
+    const digits=String(value||'').replace(/\D/g,'');
+    if(digits.length===11)return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
+    if(digits.length===14)return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+    return value||'—';
+  }
+
+  async function customerAdminRequest(path='',options={}) {
+    const response=await fetch(`/api/admin-customers${path}`,{
+      ...options,
+      headers:{
+        ...(options.body?{'Content-Type':'application/json'}:{}),
+        Authorization:`Bearer ${adminToken()}`,
+        ...(options.headers||{})
+      }
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||'Não foi possível carregar clientes.');
+    return payload;
+  }
+
+  async function importCustomersFromOlist() {
+    const button=$('#customerImportOlist');
+    const status=$('#customerSyncStatus');
+    if(!button||!status)return;
+    if(!confirm('Importar e atualizar os clientes existentes da Olist?\n\nA importação é incremental e não duplica clientes já vinculados.'))return;
+
+    button.disabled=true;
+    button.textContent='Importando…';
+    status.textContent='Consultando clientes na Olist…';
+
+    let pageNumber=1;
+    let totalPages=1;
+    let imported=0;
+    let skipped=0;
+    let errors=0;
+
+    try{
+      do{
+        const listing=await olistImportRequest('list_contacts',{page:pageNumber});
+        totalPages=Math.max(1,Number(listing.totalPages||1));
+        const items=Array.isArray(listing.items)?listing.items:[];
+        for(let index=0;index<items.length;index++){
+          const item=items[index];
+          status.textContent=`Olist: página ${pageNumber}/${totalPages} · ${index+1}/${items.length} · ${imported} importados · ${errors} erros`;
+          try{
+            const result=await olistImportRequest('import_contact',{id:item.id});
+            if(result?.result?.skipped)skipped++;
+            else imported++;
+          }catch{
+            errors++;
+          }
+          await importPause(100);
+        }
+        pageNumber++;
+      }while(pageNumber<=totalPages);
+
+      status.textContent=`Concluído: ${imported} importados/atualizados, ${skipped} ignorados e ${errors} erros.`;
+      await renderCustomers();
+    }catch(error){
+      status.textContent=`Falha na importação: ${error.message}`;
+    }finally{
+      button.disabled=false;
+      button.textContent='Importar clientes da Olist';
+    }
+  }
+
+  async function openCustomerDetail(customerId) {
+    let dialog=$('#customerDetailDialog');
+    if(!dialog){
+      document.body.insertAdjacentHTML('beforeend',`
+        <dialog id="customerDetailDialog" class="customer-dialog">
+          <div class="customer-dialog-shell">
+            <header class="customer-dialog-head">
+              <div><p class="eyebrow">CLIENTE</p><h2 id="customerDetailTitle">Carregando…</h2></div>
+              <button type="button" id="customerDetailClose" aria-label="Fechar">×</button>
+            </header>
+            <div id="customerDetailBody"><div class="empty-panel">Carregando cliente…</div></div>
+          </div>
+        </dialog>
+      `);
+      dialog=$('#customerDetailDialog');
+      $('#customerDetailClose').onclick=()=>dialog.close();
+      dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+    }
+
+    $('#customerDetailTitle').textContent='Carregando…';
+    $('#customerDetailBody').innerHTML='<div class="empty-panel">Carregando cliente…</div>';
+    if(!dialog.open)dialog.showModal();
+
+    try{
+      const payload=await customerAdminRequest(`?id=${encodeURIComponent(customerId)}`);
+      const customer=payload.customer;
+      const addresses=payload.addresses||[];
+      const orders=payload.orders||[];
+      const totalSpent=orders.filter(order=>order.payment_status==='paid').reduce((sum,order)=>sum+Number(order.total||0),0);
+      const principal=addresses.find(address=>address.is_default)||addresses[0];
+
+      $('#customerDetailTitle').textContent=customer.full_name||'Cliente';
+      $('#customerDetailBody').innerHTML=`
+        <div class="customer-detail-grid">
+          <section class="customer-detail-card">
+            <span class="customer-detail-label">Dados</span>
+            <div class="customer-detail-fields">
+              <div><small>Nome</small><strong>${esc(customer.full_name||'—')}</strong></div>
+              <div><small>E-mail</small><strong>${esc(customer.email||'—')}</strong></div>
+              <div><small>Telefone</small><strong>${esc(customer.phone||'—')}</strong></div>
+              <div><small>CPF/CNPJ</small><strong>${esc(maskCpf(customer.cpf))}</strong></div>
+              <div><small>Origem</small><strong>${esc(customer.source_provider==='olist_erp'?'Olist ERP':customer.auth_user_id?'Loja online':'Cadastro')}</strong></div>
+              <div><small>Cadastro</small><strong>${customerDate(customer.created_at)}</strong></div>
+            </div>
+          </section>
+
+          <section class="customer-detail-card">
+            <span class="customer-detail-label">Resumo comercial</span>
+            <div class="customer-detail-metrics">
+              <div><small>Pedidos</small><strong>${orders.length}</strong></div>
+              <div><small>Total pago</small><strong>${dbMoney(totalSpent)}</strong></div>
+              <div><small>Marketing</small><strong>${customer.accepts_marketing?'Aceita':'Não aceita'}</strong></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="customer-detail-card">
+          <span class="customer-detail-label">Endereço principal</span>
+          ${principal?`<p class="customer-address">${esc([principal.street,principal.number,principal.complement].filter(Boolean).join(', '))}<br>${esc([principal.neighborhood,principal.city,principal.state].filter(Boolean).join(' · '))}<br>CEP ${esc(principal.postal_code||'—')}</p>`:'<p class="muted">Nenhum endereço cadastrado.</p>'}
+        </section>
+
+        <section class="customer-detail-card">
+          <div class="customer-detail-title-row"><span class="customer-detail-label">Histórico de pedidos</span><strong>${orders.length} pedido(s)</strong></div>
+          ${orders.length?`
+            <div class="customer-orders-list">
+              ${orders.map(order=>`
+                <article>
+                  <div><strong>${esc(order.order_number||order.id)}</strong><small>${customerDate(order.placed_at||order.created_at)}</small></div>
+                  <div><span class="badge">${esc(order.status||'—')}</span><small>${esc(order.payment_status||'—')}</small></div>
+                  <strong>${dbMoney(order.total)}</strong>
+                </article>
+              `).join('')}
+            </div>
+          `:'<p class="muted">Este cliente ainda não possui pedidos importados.</p>'}
+        </section>
+
+        <section class="customer-detail-card customer-management">
+          <span class="customer-detail-label">Gestão do cliente</span>
+          <label class="customer-toggle"><input id="customerActiveToggle" type="checkbox" ${customer.active!==false?'checked':''}> Cliente ativo</label>
+          <label class="customer-toggle"><input id="customerMarketingToggle" type="checkbox" ${customer.accepts_marketing?'checked':''}> Aceita comunicações de marketing</label>
+          <label>Observações<textarea id="customerNotes" rows="4" placeholder="Observações internas sobre o cliente">${esc(customer.notes||'')}</textarea></label>
+          <div class="customer-dialog-actions">
+            <button id="customerSave" class="button" type="button">Salvar alterações</button>
+          </div>
+          <p id="customerDetailStatus" class="integration-output"></p>
+        </section>
+      `;
+
+      $('#customerSave').onclick=async()=>{
+        const button=$('#customerSave');
+        const status=$('#customerDetailStatus');
+        button.disabled=true;
+        button.textContent='Salvando…';
+        try{
+          await customerAdminRequest('',{
+            method:'POST',
+            body:JSON.stringify({
+              action:'update',
+              id:customer.id,
+              active:$('#customerActiveToggle').checked,
+              acceptsMarketing:$('#customerMarketingToggle').checked,
+              notes:$('#customerNotes').value
+            })
+          });
+          status.className='integration-output success';
+          status.textContent='Cliente atualizado com sucesso.';
+          await renderCustomers();
+        }catch(error){
+          status.className='integration-output error';
+          status.textContent=error.message;
+        }finally{
+          button.disabled=false;
+          button.textContent='Salvar alterações';
+        }
+      };
+    }catch(error){
+      $('#customerDetailBody').innerHTML=`<div class="empty-panel">${esc(error.message)}</div>`;
+    }
+  }
+
+  async function renderCustomers() {
+    $('#adminContent').innerHTML=`
+      <div class="customer-page">
+        <div class="customer-page-head">
+          <div>
+            <p class="eyebrow">CRM / BASE DE CLIENTES</p>
+            <h2>Clientes</h2>
+            <p class="muted">Clientes da loja online e contatos importados da Olist em uma única visão.</p>
+          </div>
+          <button id="customerImportOlist" class="button secondary" type="button">Importar clientes da Olist</button>
+        </div>
+
+        <div class="admin-cards customer-metrics" id="customerMetrics">
+          <div class="admin-card"><span>Total de clientes</span><strong>—</strong></div>
+          <div class="admin-card"><span>Clientes compradores</span><strong>—</strong></div>
+          <div class="admin-card"><span>Faturamento pago</span><strong>—</strong></div>
+          <div class="admin-card"><span>Ticket médio</span><strong>—</strong></div>
+        </div>
+
+        <div class="customer-toolbar">
+          <input id="customerSearch" type="search" placeholder="Buscar nome, e-mail, telefone, CPF ou cidade">
+          <select id="customerStatusFilter">
+            <option value="">Todos os clientes</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+            <option value="buyers">Já compraram</option>
+            <option value="leads">Sem pedidos</option>
+          </select>
+          <select id="customerOriginFilter">
+            <option value="">Todas as origens</option>
+            <option value="olist">Olist</option>
+            <option value="store">Loja / cadastro</option>
+          </select>
+          <select id="customerSort">
+            <option value="recent">Mais recentes</option>
+            <option value="spent">Maior gasto</option>
+            <option value="orders">Mais pedidos</option>
+            <option value="name">Nome A–Z</option>
+          </select>
+        </div>
+
+        <p id="customerSyncStatus" class="integration-output"></p>
+        <div id="customerRecords"><div class="empty-panel">Carregando clientes…</div></div>
+      </div>
+    `;
+
+    $('#customerImportOlist').onclick=importCustomersFromOlist;
+
+    let currentRows=[];
+    let debounce=null;
+
+    const paintRows=()=>{
+      const sort=$('#customerSort').value;
+      const rows=[...currentRows];
+      if(sort==='spent')rows.sort((a,b)=>Number(b.totalSpent||0)-Number(a.totalSpent||0));
+      else if(sort==='orders')rows.sort((a,b)=>Number(b.orderCount||0)-Number(a.orderCount||0));
+      else if(sort==='name')rows.sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''),'pt-BR'));
+      else rows.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+
+      $('#customerRecords').innerHTML=rows.length?`
+        <div class="table-wrap customer-table-wrap">
+          <table class="customer-table">
+            <thead><tr><th>Cliente</th><th>Contato</th><th>Localização</th><th>Pedidos</th><th>Total gasto</th><th>Último pedido</th><th>Origem</th><th>Status</th></tr></thead>
+            <tbody>
+              ${rows.map(row=>`
+                <tr data-customer-id="${esc(row.id)}">
+                  <td><div class="customer-name-cell"><span class="customer-avatar">${esc((row.full_name||'?').trim().slice(0,1).toUpperCase())}</span><div><strong>${esc(row.full_name||'Sem nome')}</strong><small>${esc(maskCpf(row.cpf))}</small></div></div></td>
+                  <td><strong>${esc(row.email||'—')}</strong><br><small>${esc(row.phone||'—')}</small></td>
+                  <td>${row.address?esc([row.address.city,row.address.state].filter(Boolean).join(' / ')):'—'}<br><small>${esc(row.address?.neighborhood||'')}</small></td>
+                  <td><strong>${Number(row.orderCount||0)}</strong><br><small>${Number(row.paidOrderCount||0)} pagos</small></td>
+                  <td><strong>${dbMoney(row.totalSpent)}</strong></td>
+                  <td>${row.lastOrder?customerDate(row.lastOrder.date):'—'}<br><small>${row.lastOrder?esc(row.lastOrder.number||''):''}</small></td>
+                  <td><span class="customer-origin ${row.source_provider==='olist_erp'?'olist':'store'}">${customerOrigin(row)}</span></td>
+                  <td><span class="badge">${row.active===false?'Inativo':'Ativo'}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `:`
+        <div class="empty-panel customer-empty">
+          <h2>Nenhum cliente encontrado</h2>
+          <p>A base do novo sistema ainda está vazia. Use “Importar clientes da Olist” para trazer os contatos da loja antiga.</p>
+        </div>
+      `;
+
+      document.querySelectorAll('[data-customer-id]').forEach(row=>{
+        row.onclick=()=>openCustomerDetail(row.dataset.customerId);
+      });
+    };
+
+    const loadCustomers=async()=>{
+      const q=$('#customerSearch').value.trim();
+      const status=$('#customerStatusFilter').value;
+      const origin=$('#customerOriginFilter').value;
+      $('#customerRecords').innerHTML='<div class="empty-panel">Carregando clientes…</div>';
+
+      try{
+        const params=new URLSearchParams();
+        if(q)params.set('q',q);
+        if(status)params.set('status',status);
+        if(origin)params.set('origin',origin);
+        const payload=await customerAdminRequest(params.toString()?`?${params.toString()}`:'');
+        currentRows=payload.customers||[];
+        const metrics=payload.metrics||{};
+
+        $('#customerMetrics').innerHTML=`
+          <div class="admin-card"><span>Total de clientes</span><strong>${Number(metrics.total||0)}</strong><small>${Number(metrics.active||0)} ativos</small></div>
+          <div class="admin-card"><span>Clientes compradores</span><strong>${Number(metrics.buyers||0)}</strong><small>${Number(metrics.leads||0)} sem pedidos</small></div>
+          <div class="admin-card"><span>Faturamento pago</span><strong>${dbMoney(metrics.totalSpent)}</strong><small>${Number(metrics.paidOrders||0)} pedidos pagos</small></div>
+          <div class="admin-card"><span>Ticket médio</span><strong>${dbMoney(metrics.averageTicket)}</strong><small>por pedido pago</small></div>
+        `;
+        paintRows();
+      }catch(error){
+        $('#customerRecords').innerHTML=`<div class="empty-panel">${esc(error.message)}</div>`;
+      }
+    };
+
+    $('#customerSearch').oninput=()=>{
+      clearTimeout(debounce);
+      debounce=setTimeout(loadCustomers,250);
+    };
+    $('#customerStatusFilter').onchange=loadCustomers;
+    $('#customerOriginFilter').onchange=loadCustomers;
+    $('#customerSort').onchange=paintRows;
+
+    await loadCustomers();
   }
 
   function renderOrders() {

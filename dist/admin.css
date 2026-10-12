@@ -1333,3 +1333,371 @@ body.dark .finance-card.primary{background:linear-gradient(145deg,rgba(246,165,2
   .admin-nav-label{padding-bottom:4px}
   .barcode-video-wrap{max-height:44dvh}
 }
+
+/* =========================================================
+   RESPONSIVE TYPOGRAPHY SYSTEM
+   ========================================================= */
+:root{
+  --admin-fs-2xs:clamp(7px,.48vw,8px);
+  --admin-fs-xs:clamp(8px,.58vw,9px);
+  --admin-fs-sm:clamp(9px,.68vw,10px);
+  --admin-fs-md:clamp(10px,.78vw,12px);
+  --admin-fs-base:clamp(11px,.9vw,13px);
+  --admin-fs-lg:clamp(13px,1vw,15px);
+  --admin-fs-xl:clamp(16px,1.35vw,20px);
+  --admin-fs-2xl:clamp(21px,2vw,30px);
+  --admin-fs-3xl:clamp(26px,2.45vw,36px);
+  --admin-line-tight:1.08;
+  --admin-line-normal:1.45;
+  --admin-line-relaxed:1.65;
+}
+
+/* Base */
+.admin-main,
+.admin-shell aside,
+#editor,
+.customer-dialog,
+.barcode-dialog,
+.auth-card{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:var(--admin-fs-base);
+  line-height:var(--admin-line-normal);
+}
+
+/* Page titles */
+.admin-main h1{
+  font-size:var(--admin-fs-3xl)!important;
+  line-height:var(--admin-line-tight)!important;
+  letter-spacing:clamp(-1.35px,-.07vw,-.7px)!important;
+}
+.admin-main h2,
+.management-head h2,
+.customer-page-head h2,
+.integration-brand h2,
+.olist-migration-head h2,
+.barcode-head h2,
+.customer-dialog-head h2{
+  font-size:var(--admin-fs-2xl)!important;
+  line-height:1.15!important;
+  letter-spacing:clamp(-.9px,-.04vw,-.4px)!important;
+}
+.admin-main h3,
+.barcode-product-info h3{
+  font-size:var(--admin-fs-xl)!important;
+  line-height:1.2!important;
+}
+
+/* Eyebrows / supporting text */
+.admin-main .eyebrow,
+.admin-nav-label,
+.customer-detail-label,
+.integration-account small,
+.barcode-meta small,
+.barcode-stock-summary small{
+  font-size:var(--admin-fs-xs)!important;
+  letter-spacing:clamp(.7px,.08vw,1.35px)!important;
+}
+.muted,
+.empty-panel p,
+.setup-notice p,
+.management-head .muted,
+.customer-page-head .muted,
+.integration-output,
+.integration-secret-note span,
+.variant-editor-head small,
+.barcode-tip,
+.customer-address{
+  font-size:var(--admin-fs-md)!important;
+  line-height:var(--admin-line-relaxed)!important;
+}
+
+/* Sidebar */
+.admin-shell aside nav button{
+  font-size:var(--admin-fs-base)!important;
+  line-height:1.2!important;
+}
+.back-store{
+  font-size:var(--admin-fs-sm)!important;
+}
+.admin-nav-label{
+  font-weight:800!important;
+}
+
+/* Buttons / controls */
+.button,
+td button,
+.admin-account button,
+.variant-remove,
+.variant-image-actions button{
+  font-size:var(--admin-fs-sm)!important;
+  line-height:1.1!important;
+}
+input,
+select,
+textarea,
+.admin-toolbar input,
+.customer-toolbar input,
+.customer-toolbar select,
+.management-period select,
+#fields input,
+#fields select,
+#fields textarea,
+.variant-grid input,
+.variant-grid select{
+  font-size:var(--admin-fs-base)!important;
+}
+#fields label,
+.variant-grid label,
+.integration-fiscal label,
+.barcode-manual-form label,
+.customer-management>label:not(.customer-toggle),
+.library-actions,
+.management-period{
+  font-size:var(--admin-fs-sm)!important;
+}
+
+/* Cards */
+.admin-card span,
+.finance-card span,
+.operation-metrics span{
+  font-size:var(--admin-fs-sm)!important;
+  line-height:1.35!important;
+}
+.admin-card strong{
+  font-size:clamp(23px,2vw,31px)!important;
+  line-height:1!important;
+}
+.finance-card strong{
+  font-size:clamp(21px,1.85vw,29px)!important;
+  line-height:1!important;
+}
+.finance-card.compact strong{
+  font-size:clamp(18px,1.45vw,23px)!important;
+}
+.admin-card small,
+.finance-card small,
+.operation-metrics small{
+  font-size:var(--admin-fs-xs)!important;
+  line-height:1.4!important;
+}
+.operation-metrics strong{
+  font-size:clamp(20px,1.7vw,27px)!important;
+}
+
+/* Tables */
+table{
+  font-size:var(--admin-fs-sm)!important;
+}
+th{
+  font-size:var(--admin-fs-xs)!important;
+  line-height:1.2!important;
+}
+td{
+  font-size:var(--admin-fs-sm)!important;
+  line-height:1.4!important;
+}
+td small,
+.product-cell small,
+.customer-name-cell small,
+.customer-orders-list small{
+  font-size:var(--admin-fs-xs)!important;
+}
+.product-cell strong,
+.customer-name-cell strong{
+  font-size:var(--admin-fs-md)!important;
+}
+
+/* CRM */
+.crm-badge,
+.customer-origin,
+.badge,
+.mode-pill,
+.status-chip{
+  font-size:var(--admin-fs-xs)!important;
+  line-height:1.1!important;
+}
+.customer-detail-fields small,
+.customer-detail-metrics small{
+  font-size:var(--admin-fs-xs)!important;
+}
+.customer-detail-fields strong{
+  font-size:var(--admin-fs-md)!important;
+}
+.customer-detail-metrics strong{
+  font-size:clamp(16px,1.35vw,20px)!important;
+}
+
+/* Dashboard */
+.finance-month strong{
+  font-size:var(--admin-fs-sm)!important;
+}
+.finance-month small,
+.finance-legend{
+  font-size:var(--admin-fs-xs)!important;
+}
+.dashboard-quick-actions strong{
+  font-size:var(--admin-fs-md)!important;
+}
+.dashboard-quick-actions small{
+  font-size:var(--admin-fs-xs)!important;
+}
+
+/* Integrations */
+.integration-status-line strong,
+.integration-steps strong{
+  font-size:var(--admin-fs-md)!important;
+}
+.integration-status-line small,
+.integration-steps span,
+.integration-secret-note strong,
+.integration-secret-note code,
+.integration-account span{
+  font-size:var(--admin-fs-sm)!important;
+}
+
+/* Image / showcase */
+.library-card-body strong,
+.showcase-slot strong{
+  font-size:var(--admin-fs-md)!important;
+}
+.library-card-body small,
+.showcase-slot small,
+.showcase-library-item small{
+  font-size:var(--admin-fs-xs)!important;
+}
+.showcase-slot-label{
+  font-size:var(--admin-fs-sm)!important;
+}
+.showcase-library-item strong{
+  font-size:var(--admin-fs-sm)!important;
+}
+
+/* Product variants */
+.variant-editor-head strong{
+  font-size:var(--admin-fs-lg)!important;
+}
+.variant-row-title strong{
+  font-size:var(--admin-fs-md)!important;
+}
+.variant-row-title small,
+.variant-stock-chip,
+.variant-help{
+  font-size:var(--admin-fs-xs)!important;
+}
+
+/* Scanner */
+.barcode-camera-message,
+.barcode-tip,
+.barcode-manual-form label,
+.barcode-meta strong{
+  font-size:var(--admin-fs-sm)!important;
+}
+.barcode-product-info>p{
+  font-size:var(--admin-fs-md)!important;
+}
+.barcode-stock-summary strong{
+  font-size:clamp(18px,1.7vw,24px)!important;
+}
+.barcode-source{
+  font-size:var(--admin-fs-xs)!important;
+}
+
+/* Auth */
+.auth-card h1{
+  font-size:clamp(24px,2.25vw,31px)!important;
+}
+.auth-card label,
+#authMessage,
+.auth-help{
+  font-size:var(--admin-fs-md)!important;
+}
+
+/* Notebook */
+@media(max-width:1366px){
+  :root{
+    --admin-fs-base:11px;
+    --admin-fs-md:10px;
+    --admin-fs-sm:9px;
+  }
+  .admin-main h1{font-size:30px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2{font-size:24px!important}
+}
+
+/* Tablet */
+@media(max-width:920px){
+  :root{
+    --admin-fs-2xs:7px;
+    --admin-fs-xs:8px;
+    --admin-fs-sm:9px;
+    --admin-fs-md:10px;
+    --admin-fs-base:11px;
+    --admin-fs-lg:13px;
+    --admin-fs-xl:17px;
+    --admin-fs-2xl:22px;
+    --admin-fs-3xl:26px;
+  }
+  .admin-shell aside nav button{font-size:11px!important}
+  .admin-main h1{font-size:25px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2{font-size:22px!important}
+  .finance-card strong{font-size:21px!important}
+  .finance-card.compact strong{font-size:18px!important}
+  .dashboard-quick-actions strong{font-size:10px!important}
+  .dashboard-quick-actions small{font-size:8px!important}
+}
+
+/* Phones */
+@media(max-width:620px){
+  :root{
+    --admin-fs-2xs:7px;
+    --admin-fs-xs:8px;
+    --admin-fs-sm:9px;
+    --admin-fs-md:10px;
+    --admin-fs-base:11px;
+    --admin-fs-lg:12px;
+    --admin-fs-xl:16px;
+    --admin-fs-2xl:20px;
+    --admin-fs-3xl:22px;
+  }
+  body{font-size:11px!important}
+  .admin-main h1{font-size:21px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2,
+  .integration-brand h2,
+  .barcode-head h2,
+  .customer-dialog-head h2{font-size:20px!important}
+  .admin-card strong{font-size:20px!important}
+  .finance-card strong{font-size:19px!important}
+  .finance-card.compact strong{font-size:17px!important}
+  .operation-metrics strong{font-size:20px!important}
+  input,select,textarea{font-size:16px!important} /* evita zoom automático no iOS */
+  .admin-toolbar input,
+  .customer-toolbar input,
+  .customer-toolbar select,
+  .management-period select,
+  #fields input,#fields select,#fields textarea,
+  .variant-grid input,.variant-grid select,
+  .barcode-manual-form input,
+  .barcode-note input,
+  .customer-management textarea{font-size:16px!important}
+  .button{font-size:10px!important}
+  table,td{font-size:9px!important}
+  th{font-size:8px!important}
+  .customer-name-cell strong,.product-cell strong{font-size:10px!important}
+}
+
+/* Very small phones */
+@media(max-width:390px){
+  .admin-main h1{font-size:19px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2{font-size:18px!important}
+  .finance-card strong{font-size:18px!important}
+  .admin-card strong{font-size:19px!important}
+  .dashboard-quick-actions strong{font-size:9px!important}
+  .dashboard-quick-actions small{font-size:7px!important}
+}

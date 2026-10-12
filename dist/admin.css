@@ -245,3 +245,14 @@
   .barcode-actions{display:grid;grid-template-columns:1fr}
   .barcode-actions .button{width:100%}
 }
+
+.barcode-permission{position:absolute;inset:0;z-index:4;display:grid;place-items:center;align-content:center;gap:10px;padding:28px;text-align:center;background:linear-gradient(180deg,rgba(8,8,8,.96),rgba(14,14,14,.98));color:#fff}
+.barcode-permission[hidden]{display:none!important}
+.barcode-permission-icon{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;background:var(--orange);color:#171717;font-size:30px;font-weight:900;margin-bottom:2px}
+.barcode-permission h3{font-size:20px;margin:0}
+.barcode-permission p{max-width:42ch;margin:0;font-size:11px;line-height:1.6;color:#ddd}
+.barcode-permission .button{min-width:180px;min-height:46px;margin-top:4px}
+.barcode-permission small{max-width:46ch;font-size:9px;line-height:1.55;color:#999}
+.barcode-permission[data-state="denied"] .barcode-permission-icon{background:#d65f4b;color:#fff}
+.barcode-permission[data-state="unsupported"] .barcode-permission-icon,
+.barcode-permission[data-state="unavailable"] .barcode-permission-icon{background:#777;color:#fff}

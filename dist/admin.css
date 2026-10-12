@@ -256,3 +256,13 @@
 .barcode-permission[data-state="denied"] .barcode-permission-icon{background:#d65f4b;color:#fff}
 .barcode-permission[data-state="unsupported"] .barcode-permission-icon,
 .barcode-permission[data-state="unavailable"] .barcode-permission-icon{background:#777;color:#fff}
+
+.barcode-fallback-reader{position:absolute;inset:0;z-index:1;background:#050505}
+.barcode-fallback-reader[hidden]{display:none!important}
+.barcode-fallback-reader>div{border:0!important}
+.barcode-fallback-reader video{width:100%!important;height:100%!important;object-fit:cover!important;border:0!important}
+.barcode-fallback-reader img{display:none!important}
+.barcode-fallback-reader #qr-shaded-region{border-width:0!important}
+.barcode-video-wrap>.barcode-target{z-index:2}
+.barcode-video-wrap>.barcode-camera-message{z-index:5}
+.barcode-video-wrap>.barcode-permission{z-index:6}

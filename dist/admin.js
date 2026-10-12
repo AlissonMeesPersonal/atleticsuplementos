@@ -88,6 +88,8 @@
   let barcodeManualDeviceSelection = false;
   let barcodeBusy = false;
   let barcodeDecodeRequestBusy = false;
+  let barcodeQuaggaBusy = false;
+  let barcodeFrameCounter = 0;
   let barcodeCurrentCode = '';
   let barcodeCurrentProduct = null;
 
@@ -257,7 +259,10 @@
               <label>Câmera
                 <select id="barcodeCameraSelect"></select>
               </label>
-              <button id="barcodeRefreshCameras" class="button secondary" type="button">Atualizar câmeras</button>
+              <div class="barcode-camera-control-buttons">
+                <button id="barcodeReadNow" class="button" type="button">Ler código agora</button>
+                <button id="barcodeRefreshCameras" class="button secondary" type="button">Atualizar câmeras</button>
+              </div>
             </div>
             <p class="barcode-tip">Aponte a câmera para o EAN/GTIN do produto. Você pode escolher webcam, câmera frontal ou traseira.</p>
           </div>
@@ -280,6 +285,45 @@
     $('#barcodeClose').onclick=closeBarcodeScanner;
     $('#barcodeEnableCamera').onclick=requestBarcodeCamera;
     $('#barcodeRefreshCameras').onclick=async()=>{await refreshBarcodeCameras()};
+    $('#barcodeReadNow').onclick=async()=>{
+      const video=$('#barcodeVideo');
+      const status=$('#barcodeStatus');
+      if(!barcodeStream||!video?.videoWidth){
+        status.textContent='Ative a câmera primeiro.';
+        return;
+      }
+      const button=$('#barcodeReadNow');
+      button.disabled=true;
+      button.textContent='Lendo…';
+      try{
+        let code='';
+        if(barcodeDetector){
+          try{
+            const codes=await barcodeDetector.detect(video);
+            const hit=codes?.find(item=>validScannedBarcode(item.rawValue));
+            if(hit)code=normalizeScannedBarcode(hit.rawValue);
+          }catch{}
+        }
+        if(!code){
+          const decoded=await decodeBarcodeFrameWithQuagga(video);
+          if(validScannedBarcode(decoded))code=normalizeScannedBarcode(decoded);
+        }
+        if(!code){
+          const decoded=await decodeBarcodeFrameOnServer(video);
+          if(validScannedBarcode(decoded))code=normalizeScannedBarcode(decoded);
+        }
+        if(code){
+          barcodeCurrentCode=code;
+          await stopBarcodeCamera();
+          await lookupBarcodeStock(code);
+        }else{
+          status.textContent='Ainda não consegui ler. Aproxime o código, evite reflexo e deixe as barras ocupando boa parte da marcação.';
+        }
+      }finally{
+        button.disabled=false;
+        button.textContent='Ler código agora';
+      }
+    };
     $('#barcodeCameraSelect').onchange=async event=>{
       barcodeSelectedDeviceId=event.target.value||'';
       barcodeManualDeviceSelection=Boolean(barcodeSelectedDeviceId);
@@ -527,6 +571,9 @@
 
       barcodeBusy=false;
       barcodeDecodeRequestBusy=false;
+      barcodeQuaggaBusy=false;
+      barcodeFrameCounter=0;
+      loadQuaggaLibrary().catch(()=>{});
       barcodeScanFrame();
     }catch(error){
       await stopBarcodeCamera();
@@ -554,6 +601,99 @@
       });
       await refreshBarcodeCameras();
     }
+  }
+
+  function loadQuaggaLibrary() {
+    if(window.Quagga)return Promise.resolve(window.Quagga);
+    if(window.__atleticQuaggaPromise)return window.__atleticQuaggaPromise;
+
+    window.__atleticQuaggaPromise=new Promise((resolve,reject)=>{
+      const existing=document.querySelector('script[data-atletic-quagga]');
+      if(existing){
+        if(window.Quagga)return resolve(window.Quagga);
+        existing.addEventListener('load',()=>window.Quagga?resolve(window.Quagga):reject(new Error('Leitor auxiliar não carregou.')),{once:true});
+        existing.addEventListener('error',()=>reject(new Error('Leitor auxiliar indisponível.')),{once:true});
+        return;
+      }
+
+      const script=document.createElement('script');
+      script.src='https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js';
+      script.async=true;
+      script.dataset.atleticQuagga='1';
+      script.onload=()=>window.Quagga?resolve(window.Quagga):reject(new Error('Leitor auxiliar não carregou.'));
+      script.onerror=()=>reject(new Error('Leitor auxiliar indisponível.'));
+      document.head.appendChild(script);
+    });
+
+    return window.__atleticQuaggaPromise;
+  }
+
+  async function decodeBarcodeFrameWithQuagga(video) {
+    if(barcodeQuaggaBusy)return null;
+    const image=barcodeFrameData(video);
+    if(!image)return null;
+
+    barcodeQuaggaBusy=true;
+    try{
+      const Quagga=await loadQuaggaLibrary();
+      return await new Promise(resolve=>{
+        let settled=false;
+        const finish=value=>{
+          if(settled)return;
+          settled=true;
+          resolve(value||null);
+        };
+
+        const timer=setTimeout(()=>finish(null),1800);
+
+        Quagga.decodeSingle({
+          src:image,
+          numOfWorkers:0,
+          locate:true,
+          inputStream:{
+            size:900,
+            singleChannel:false
+          },
+          locator:{
+            patchSize:'medium',
+            halfSample:true
+          },
+          decoder:{
+            readers:[
+              'ean_reader',
+              'ean_8_reader',
+              'upc_reader',
+              'upc_e_reader',
+              'code_128_reader',
+              'code_39_reader',
+              'i2of5_reader'
+            ],
+            multiple:false
+          }
+        },result=>{
+          clearTimeout(timer);
+          const code=String(result?.codeResult?.code||'').trim();
+          finish(code||null);
+        });
+      });
+    }catch{
+      return null;
+    }finally{
+      barcodeQuaggaBusy=false;
+    }
+  }
+
+  function normalizeScannedBarcode(value='') {
+    const raw=String(value||'').trim();
+    const digitsOnly=raw.replace(/\D/g,'');
+    if(digitsOnly.length>=8&&digitsOnly.length<=14)return digitsOnly;
+    return raw;
+  }
+
+  function validScannedBarcode(value='') {
+    const code=normalizeScannedBarcode(value);
+    if(/^\d{8,14}$/.test(code))return true;
+    return /^[A-Z0-9._\/-]{4,40}$/i.test(code);
   }
 
   function barcodeFrameData(video) {
@@ -593,25 +733,41 @@
   async function barcodeScanFrame() {
     if(!barcodeStream)return;
     const video=$('#barcodeVideo');
+    const message=$('#barcodeCameraMessage');
     let code='';
 
     try{
       if(!barcodeBusy&&video?.readyState>=2){
         barcodeBusy=true;
+        barcodeFrameCounter++;
+
+        if(message&&!message.hidden&&barcodeFrameCounter%4===1){
+          message.textContent='Lendo código de barras… mantenha o código dentro da marcação.';
+        }
 
         if(barcodeDetector){
           try{
             const codes=await barcodeDetector.detect(video);
-            const hit=codes?.find(item=>String(item.rawValue||'').trim());
-            if(hit)code=String(hit.rawValue).trim();
+            const hit=codes?.find(item=>validScannedBarcode(item.rawValue));
+            if(hit)code=normalizeScannedBarcode(hit.rawValue);
           }catch{}
         }
 
-        if(!code)code=await decodeBarcodeFrameOnServer(video)||'';
+        if(!code){
+          const quaggaCode=await decodeBarcodeFrameWithQuagga(video);
+          if(validScannedBarcode(quaggaCode))code=normalizeScannedBarcode(quaggaCode);
+        }
+
+        // Servidor entra como último fallback e não precisa receber todos os frames.
+        if(!code&&barcodeFrameCounter%3===0){
+          const serverCode=await decodeBarcodeFrameOnServer(video);
+          if(validScannedBarcode(serverCode))code=normalizeScannedBarcode(serverCode);
+        }
 
         if(code&&code!==barcodeCurrentCode){
           barcodeCurrentCode=code;
-          if(navigator.vibrate)navigator.vibrate(90);
+          if(message)message.textContent=`Código ${code} identificado. Buscando produto…`;
+          if(navigator.vibrate)navigator.vibrate([80,40,80]);
           await stopBarcodeCamera();
           await lookupBarcodeStock(code);
           return;
@@ -621,13 +777,15 @@
       barcodeBusy=false;
     }
 
-    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,isMobileLike()?750:900);
+    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,isMobileLike()?420:500);
   }
 
   async function stopBarcodeCamera() {
     clearTimeout(barcodeTimer);
     barcodeTimer=null;
     barcodeDecodeRequestBusy=false;
+    barcodeQuaggaBusy=false;
+    barcodeFrameCounter=0;
 
     if(barcodeStream){
       barcodeStream.getTracks().forEach(track=>track.stop());

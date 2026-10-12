@@ -1814,3 +1814,303 @@ td small,
   .order-items-list article>strong{grid-column:2;grid-row:1/3;align-self:center}
   .order-action-grid{grid-template-columns:1fr}
 }
+
+/* =========================================================
+   ADMIN TYPOGRAPHY POLISH — MANROPE
+   ========================================================= */
+body,
+.admin-main,
+.admin-shell aside,
+#editor,
+.customer-dialog,
+.barcode-dialog,
+.order-dialog,
+.auth-card,
+button,
+input,
+select,
+textarea{
+  font-family:'Manrope','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+  font-kerning:normal;
+  letter-spacing:0;
+}
+
+.admin-main h1{
+  font-family:'Manrope','Inter',sans-serif!important;
+  font-weight:800!important;
+  font-size:clamp(30px,2.15vw,36px)!important;
+  letter-spacing:-1.15px!important;
+  line-height:1.08!important;
+}
+.admin-main h2,
+.management-head h2,
+.customer-page-head h2,
+.orders-page-head h2,
+.integration-brand h2,
+.olist-migration-head h2,
+.barcode-head h2,
+.customer-dialog-head h2,
+.order-dialog-head h2{
+  font-family:'Manrope','Inter',sans-serif!important;
+  font-weight:800!important;
+  font-size:clamp(24px,1.75vw,31px)!important;
+  letter-spacing:-.85px!important;
+  line-height:1.12!important;
+}
+.admin-main h3,
+.barcode-product-info h3{
+  font-family:'Manrope','Inter',sans-serif!important;
+  font-weight:700!important;
+  letter-spacing:-.45px!important;
+}
+
+.admin-main .eyebrow,
+.admin-nav-label{
+  font-size:10px!important;
+  font-weight:700!important;
+  letter-spacing:1.05px!important;
+  line-height:1.15!important;
+}
+
+.admin-shell aside nav button{
+  font-size:13px!important;
+  font-weight:600!important;
+  letter-spacing:-.1px!important;
+}
+
+.muted,
+.empty-panel p,
+.setup-notice p,
+.management-head .muted,
+.customer-page-head .muted,
+.orders-page-head .muted,
+.integration-output,
+.integration-secret-note span,
+.variant-editor-head small,
+.barcode-tip,
+.customer-address{
+  font-size:12px!important;
+  line-height:1.6!important;
+  font-weight:500!important;
+  letter-spacing:0!important;
+}
+
+.finance-card span,
+.admin-card span,
+.operation-metrics span{
+  font-size:11px!important;
+  font-weight:600!important;
+  line-height:1.35!important;
+  letter-spacing:-.05px!important;
+}
+.finance-card small,
+.admin-card small,
+.operation-metrics small{
+  font-size:10px!important;
+  line-height:1.45!important;
+  font-weight:500!important;
+  letter-spacing:0!important;
+}
+.finance-card strong{
+  font-family:'Manrope','Inter',sans-serif!important;
+  font-size:clamp(27px,2vw,32px)!important;
+  font-weight:700!important;
+  letter-spacing:-1px!important;
+  line-height:1.02!important;
+}
+.finance-card.compact strong{
+  font-size:clamp(22px,1.55vw,26px)!important;
+}
+.admin-card strong,
+.operation-metrics strong{
+  font-family:'Manrope','Inter',sans-serif!important;
+  font-weight:700!important;
+  letter-spacing:-.7px!important;
+}
+
+.management-period,
+.management-period select,
+.customer-toolbar input,
+.customer-toolbar select,
+.orders-toolbar input,
+.orders-toolbar select,
+.admin-toolbar input,
+.button,
+.admin-account button{
+  font-size:12px!important;
+  font-weight:600!important;
+  letter-spacing:-.05px!important;
+}
+
+table,
+td{
+  font-size:12px!important;
+  line-height:1.45!important;
+}
+th{
+  font-size:10px!important;
+  font-weight:700!important;
+  letter-spacing:.45px!important;
+}
+td small,
+.product-cell small,
+.customer-name-cell small,
+.customer-orders-list small,
+.order-items-list small{
+  font-size:10px!important;
+  font-weight:500!important;
+}
+.product-cell strong,
+.customer-name-cell strong,
+.order-items-list strong{
+  font-size:12px!important;
+  font-weight:700!important;
+}
+
+.customer-detail-label,
+.order-detail-label,
+.customer-detail-fields small,
+.customer-detail-metrics small,
+.order-data-grid small,
+.barcode-meta small,
+.barcode-stock-summary small{
+  font-size:9px!important;
+  font-weight:700!important;
+  letter-spacing:.55px!important;
+}
+.customer-detail-fields strong,
+.order-data-grid strong,
+.barcode-meta strong{
+  font-size:12px!important;
+  font-weight:600!important;
+}
+.customer-detail-metrics strong{
+  font-size:19px!important;
+  font-weight:700!important;
+}
+
+.crm-badge,
+.customer-origin,
+.badge,
+.mode-pill,
+.status-chip,
+.order-state{
+  font-size:9px!important;
+  font-weight:700!important;
+  letter-spacing:.2px!important;
+}
+
+.dashboard-quick-actions strong{
+  font-size:12px!important;
+  font-weight:700!important;
+}
+.dashboard-quick-actions small,
+.finance-month small,
+.finance-legend{
+  font-size:9px!important;
+  font-weight:500!important;
+}
+.finance-month strong{
+  font-size:10px!important;
+  font-weight:700!important;
+  letter-spacing:.15px!important;
+}
+
+.integration-status-line strong,
+.integration-steps strong,
+.variant-editor-head strong,
+.variant-row-title strong{
+  font-size:12px!important;
+  font-weight:700!important;
+}
+.integration-status-line small,
+.integration-steps span,
+.variant-row-title small,
+.variant-stock-chip,
+.variant-help{
+  font-size:10px!important;
+  font-weight:500!important;
+}
+
+.library-card-body strong,
+.showcase-slot strong,
+.showcase-library-item strong{
+  font-weight:700!important;
+  letter-spacing:-.1px!important;
+}
+.library-card-body small,
+.showcase-slot small,
+.showcase-library-item small{
+  font-size:10px!important;
+  font-weight:500!important;
+}
+
+/* Notebook */
+@media(max-width:1366px){
+  .admin-main h1{font-size:31px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2,
+  .orders-page-head h2{font-size:25px!important}
+  .admin-shell aside nav button{font-size:12px!important}
+  .finance-card strong{font-size:28px!important}
+}
+
+/* Tablet */
+@media(max-width:920px){
+  .admin-main h1{font-size:25px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2,
+  .orders-page-head h2{font-size:22px!important}
+  .admin-main .eyebrow,.admin-nav-label{font-size:9px!important}
+  .muted,
+  .empty-panel p,
+  .setup-notice p,
+  .management-head .muted,
+  .customer-page-head .muted,
+  .orders-page-head .muted{font-size:11px!important}
+  .finance-card span,.admin-card span,.operation-metrics span{font-size:10px!important}
+  .finance-card small,.admin-card small{font-size:9px!important}
+  .finance-card strong{font-size:24px!important}
+  .finance-card.compact strong{font-size:20px!important}
+}
+
+/* Phones */
+@media(max-width:620px){
+  .admin-main h1{font-size:22px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2,
+  .orders-page-head h2,
+  .barcode-head h2,
+  .customer-dialog-head h2,
+  .order-dialog-head h2{font-size:20px!important}
+
+  .admin-shell aside nav button{font-size:12px!important}
+  .admin-main .eyebrow{font-size:8px!important}
+
+  .finance-card span,.admin-card span,.operation-metrics span{font-size:10px!important}
+  .finance-card small,.admin-card small{font-size:9px!important}
+  .finance-card strong{font-size:22px!important}
+  .finance-card.compact strong{font-size:19px!important}
+
+  table,td{font-size:11px!important}
+  th{font-size:9px!important}
+
+  .button{font-size:11px!important}
+  input,select,textarea{font-size:16px!important}
+}
+
+/* Very small phones */
+@media(max-width:390px){
+  .admin-main h1{font-size:20px!important}
+  .admin-main h2,
+  .management-head h2,
+  .customer-page-head h2,
+  .orders-page-head h2{font-size:18px!important}
+  .finance-card strong{font-size:21px!important}
+}

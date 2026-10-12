@@ -3,6 +3,7 @@
   "type": "module",
   "dependencies": {
     "sharp": "^0.34.4",
-    "archiver": "^7.0.1"
+    "archiver": "^7.0.1",
+    "@zxing/library": "^0.21.3"
   }
 }

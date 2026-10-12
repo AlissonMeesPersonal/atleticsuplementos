@@ -80,6 +80,12 @@
   let variantImageTarget = null;
   let libraryImageCache = [];
   let data = AtleticStore.load();
+  let barcodeStream = null;
+  let barcodeTimer = null;
+  let barcodeDetector = null;
+  let barcodeBusy = false;
+  let barcodeCurrentCode = '';
+  let barcodeCurrentProduct = null;
 
   function refresh() { data = AtleticStore.load(); }
   function notify(text) { $('#adminStatus').textContent = text; $('#adminStatus').classList.add('visible'); clearTimeout(notify.timer); notify.timer = setTimeout(() => $('#adminStatus').classList.remove('visible'), 3200); }
@@ -186,8 +192,384 @@
       </div>`;
   }
 
+  function dbMoney(value) {
+    return Number(value||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  }
+
+  function localBarcodeProduct(code) {
+    const normalized=String(code||'').replace(/\D/g,'');
+    const variant=data.variants.find(v=>{
+      const barcode=String(v.barcode||'').replace(/\D/g,'');
+      return (normalized&&barcode===normalized)||String(v.sku||'').trim().toLowerCase()===String(code||'').trim().toLowerCase();
+    });
+    if(!variant)return null;
+    const product=data.products.find(p=>p.id===variant.productId);
+    return {
+      source:'local',
+      variantId:variant.id,
+      productId:variant.productId,
+      name:product?.name||'Produto',
+      variantName:[variant.size,variant.flavor].filter(Boolean).join(' · '),
+      sku:variant.sku||'',
+      barcode:variant.barcode||code,
+      flavor:variant.flavor||'',
+      size:variant.size||'',
+      weightG:null,
+      price:Number(variant.price||0)/100,
+      stock:balance(variant.id),
+      minimumStock:Number(variant.minStock||0),
+      imageUrl:variant.image||product?.images?.[0]?.url||''
+    };
+  }
+
+  function ensureBarcodeScanner() {
+    if($('#barcodeScanner'))return;
+    document.body.insertAdjacentHTML('beforeend',`
+      <dialog id="barcodeScanner" class="barcode-dialog" aria-labelledby="barcodeScannerTitle">
+        <div class="barcode-shell">
+          <header class="barcode-head">
+            <div>
+              <p class="eyebrow">ENTRADA RÁPIDA DE ESTOQUE</p>
+              <h2 id="barcodeScannerTitle">Escanear código de barras</h2>
+            </div>
+            <button id="barcodeClose" type="button" aria-label="Fechar">×</button>
+          </header>
+
+          <div id="barcodeCameraPanel" class="barcode-camera-panel">
+            <div class="barcode-video-wrap">
+              <video id="barcodeVideo" playsinline muted></video>
+              <div class="barcode-target" aria-hidden="true"><span></span></div>
+              <div id="barcodeCameraMessage" class="barcode-camera-message">Preparando a câmera…</div>
+            </div>
+            <p class="barcode-tip">Aponte a câmera traseira para o EAN/GTIN do produto. O sistema busca primeiro no Supabase/Olist e depois nos cadastros locais.</p>
+          </div>
+
+          <form id="barcodeManualForm" class="barcode-manual-form">
+            <label>Ou digite o código
+              <div>
+                <input id="barcodeManualCode" inputmode="numeric" autocomplete="off" placeholder="Ex.: 7891234567890">
+                <button class="button secondary" type="submit">Buscar</button>
+              </div>
+            </label>
+          </form>
+
+          <section id="barcodeResult" class="barcode-result" hidden></section>
+          <p id="barcodeStatus" class="barcode-status" aria-live="polite"></p>
+        </div>
+      </dialog>
+    `);
+
+    $('#barcodeClose').onclick=closeBarcodeScanner;
+    $('#barcodeScanner').addEventListener('close',stopBarcodeCamera);
+    $('#barcodeScanner').addEventListener('click',event=>{if(event.target===$('#barcodeScanner'))closeBarcodeScanner()});
+    $('#barcodeManualForm').onsubmit=event=>{
+      event.preventDefault();
+      const code=$('#barcodeManualCode').value.trim();
+      if(!code)return;
+      stopBarcodeCamera();
+      lookupBarcodeStock(code);
+    };
+  }
+
+  async function startBarcodeCamera() {
+    stopBarcodeCamera();
+    const message=$('#barcodeCameraMessage');
+    const video=$('#barcodeVideo');
+    $('#barcodeCameraPanel').hidden=false;
+    $('#barcodeResult').hidden=true;
+    $('#barcodeStatus').textContent='';
+
+    if(!navigator.mediaDevices?.getUserMedia){
+      message.textContent='Este navegador não disponibiliza acesso à câmera. Digite o código abaixo.';
+      return;
+    }
+    if(!('BarcodeDetector' in window)){
+      message.textContent='Leitura automática indisponível neste navegador. Use Chrome/Edge no celular ou digite o código abaixo.';
+      return;
+    }
+
+    try{
+      const supported=BarcodeDetector.getSupportedFormats?await BarcodeDetector.getSupportedFormats():[];
+      const preferred=['ean_13','ean_8','upc_a','upc_e','code_128'];
+      const formats=supported.length?preferred.filter(format=>supported.includes(format)):preferred;
+      barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
+      barcodeStream=await navigator.mediaDevices.getUserMedia({
+        video:{
+          facingMode:{ideal:'environment'},
+          width:{ideal:1280},
+          height:{ideal:720}
+        },
+        audio:false
+      });
+      video.srcObject=barcodeStream;
+      await video.play();
+      message.textContent='Centralize o código de barras dentro da marcação.';
+      barcodeBusy=false;
+      barcodeScanFrame();
+    }catch(error){
+      message.textContent=error?.name==='NotAllowedError'
+        ? 'Permissão da câmera negada. Libere a câmera para este site ou digite o código abaixo.'
+        : 'Não foi possível iniciar a câmera. Você ainda pode digitar o código abaixo.';
+    }
+  }
+
+  async function barcodeScanFrame() {
+    if(!barcodeStream||!barcodeDetector)return;
+    const video=$('#barcodeVideo');
+    try{
+      if(!barcodeBusy&&video?.readyState>=2){
+        barcodeBusy=true;
+        const codes=await barcodeDetector.detect(video);
+        const hit=codes?.find(item=>String(item.rawValue||'').trim());
+        if(hit){
+          const code=String(hit.rawValue).trim();
+          if(code!==barcodeCurrentCode){
+            barcodeCurrentCode=code;
+            if(navigator.vibrate)navigator.vibrate(90);
+            stopBarcodeCamera();
+            await lookupBarcodeStock(code);
+            return;
+          }
+        }
+      }
+    }catch{}
+    finally{barcodeBusy=false}
+    barcodeTimer=setTimeout(barcodeScanFrame,180);
+  }
+
+  function stopBarcodeCamera() {
+    clearTimeout(barcodeTimer);
+    barcodeTimer=null;
+    if(barcodeStream){
+      barcodeStream.getTracks().forEach(track=>track.stop());
+      barcodeStream=null;
+    }
+    const video=$('#barcodeVideo');
+    if(video)video.srcObject=null;
+    barcodeDetector=null;
+    barcodeBusy=false;
+  }
+
+  function closeBarcodeScanner() {
+    stopBarcodeCamera();
+    const dialog=$('#barcodeScanner');
+    if(dialog?.open)dialog.close();
+    document.body.style.overflow='';
+  }
+
+  function renderBarcodeFound(product,code) {
+    barcodeCurrentProduct=product;
+    const result=$('#barcodeResult');
+    $('#barcodeCameraPanel').hidden=true;
+    result.hidden=false;
+    const size=product.size||(product.weightG?(product.weightG>=1000?`${(product.weightG/1000).toLocaleString('pt-BR',{maximumFractionDigits:2})} kg`:`${product.weightG} g`):'');
+    const detail=[size,product.flavor].filter(Boolean).join(' · ');
+    result.innerHTML=`
+      <div class="barcode-product">
+        <div class="barcode-product-image">${product.imageUrl?`<img src="${esc(product.imageUrl)}" alt="">`:'<span>▦</span>'}</div>
+        <div class="barcode-product-info">
+          <span class="barcode-source">${product.source==='local'?'CADASTRO LOCAL':product.externalId?'OLIST + SUPABASE':'SUPABASE'}</span>
+          <h3>${esc(product.name)}</h3>
+          <p>${esc(detail||product.variantName||'Variação padrão')}</p>
+          <div class="barcode-meta">
+            <span><small>SKU</small><strong>${esc(product.sku||'—')}</strong></span>
+            <span><small>EAN/GTIN</small><strong>${esc(product.barcode||code)}</strong></span>
+            <span><small>Preço</small><strong>${product.source==='local'?money(Math.round(Number(product.price||0)*100)):dbMoney(product.price)}</strong></span>
+          </div>
+        </div>
+      </div>
+      <div class="barcode-stock-summary">
+        <div><small>Estoque atual</small><strong id="barcodeCurrentStock">${Number(product.stock||0)}</strong></div>
+        <div><small>Entrada</small><strong id="barcodeProjectedAdd">+1</strong></div>
+        <div><small>Novo saldo</small><strong id="barcodeProjectedStock">${Number(product.stock||0)+1}</strong></div>
+      </div>
+      <div class="barcode-quantity-block">
+        <span>Quantas unidades chegaram?</span>
+        <div class="barcode-qty">
+          <button type="button" id="barcodeQtyMinus">−</button>
+          <input id="barcodeQty" type="number" min="1" step="1" inputmode="numeric" value="1">
+          <button type="button" id="barcodeQtyPlus">+</button>
+        </div>
+      </div>
+      <label class="barcode-note">Observação da entrada
+        <input id="barcodeNote" placeholder="Ex.: recebimento fornecedor, NF 1234">
+      </label>
+      <div class="barcode-actions">
+        <button type="button" id="barcodeScanAnother" class="button secondary">Escanear outro</button>
+        <button type="button" id="barcodeReceive" class="button">Adicionar ao estoque</button>
+      </div>
+    `;
+
+    const qty=$('#barcodeQty');
+    const updateProjection=()=>{
+      const value=Math.max(1,Math.floor(Number(qty.value||1)));
+      qty.value=value;
+      $('#barcodeProjectedAdd').textContent=`+${value}`;
+      $('#barcodeProjectedStock').textContent=String(Number(product.stock||0)+value);
+    };
+    qty.oninput=updateProjection;
+    $('#barcodeQtyMinus').onclick=()=>{qty.value=Math.max(1,Number(qty.value||1)-1);updateProjection()};
+    $('#barcodeQtyPlus').onclick=()=>{qty.value=Number(qty.value||1)+1;updateProjection()};
+    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;startBarcodeCamera()};
+    $('#barcodeReceive').onclick=receiveBarcodeStock;
+    setTimeout(()=>qty.focus(),80);
+  }
+
+  function renderBarcodeNotFound(code) {
+    barcodeCurrentProduct=null;
+    const result=$('#barcodeResult');
+    $('#barcodeCameraPanel').hidden=true;
+    result.hidden=false;
+    result.innerHTML=`
+      <div class="barcode-not-found">
+        <span class="barcode-not-found-icon">?</span>
+        <h3>Produto não encontrado</h3>
+        <p>O código <strong>${esc(code)}</strong> ainda não está vinculado a uma variação da Atletic.</p>
+        <div class="barcode-actions">
+          <button type="button" id="barcodeTryAgain" class="button secondary">Escanear novamente</button>
+          <button type="button" id="barcodeCreateProduct" class="button">Cadastrar novo produto</button>
+        </div>
+      </div>
+    `;
+    $('#barcodeTryAgain').onclick=()=>{barcodeCurrentCode='';startBarcodeCamera()};
+    $('#barcodeCreateProduct').onclick=()=>createProductFromBarcode(code);
+  }
+
+  async function lookupBarcodeStock(code) {
+    const normalized=String(code||'').trim();
+    if(!normalized)return;
+    barcodeCurrentCode=normalized;
+    $('#barcodeStatus').textContent='Buscando produto…';
+    $('#barcodeResult').hidden=true;
+
+    try{
+      const response=await fetch('/api/barcode-stock',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+        body:JSON.stringify({action:'lookup',code:normalized})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||'Não foi possível consultar o código.');
+
+      if(payload.found&&payload.product){
+        payload.product.source='supabase';
+        $('#barcodeStatus').textContent='';
+        renderBarcodeFound(payload.product,normalized);
+        return;
+      }
+
+      const local=localBarcodeProduct(normalized);
+      $('#barcodeStatus').textContent='';
+      if(local)renderBarcodeFound(local,normalized);
+      else renderBarcodeNotFound(normalized);
+    }catch(error){
+      const local=localBarcodeProduct(normalized);
+      if(local){
+        $('#barcodeStatus').textContent='Banco remoto indisponível; usando o cadastro local.';
+        renderBarcodeFound(local,normalized);
+      }else{
+        $('#barcodeStatus').textContent=error.message;
+        renderBarcodeNotFound(normalized);
+      }
+    }
+  }
+
+  async function receiveBarcodeStock() {
+    const product=barcodeCurrentProduct;
+    if(!product)return;
+    const button=$('#barcodeReceive');
+    const qty=Math.max(1,Math.floor(Number($('#barcodeQty')?.value||1)));
+    const note=$('#barcodeNote')?.value.trim()||'';
+    button.disabled=true;
+    button.textContent='Salvando entrada…';
+    $('#barcodeStatus').textContent='';
+
+    try{
+      if(product.source==='local'){
+        data.stock.push({
+          id:AtleticStore.uid('mov'),
+          variantId:product.variantId,
+          lot:'',
+          expires:'',
+          delta:qty,
+          reason:note||'Entrada por scanner',
+          createdAt:new Date().toISOString()
+        });
+        AtleticStore.save(data);
+        refresh();
+        const newStock=balance(product.variantId);
+        product.stock=newStock;
+        $('#barcodeCurrentStock').textContent=String(newStock);
+        $('#barcodeProjectedAdd').textContent=`+${qty}`;
+        $('#barcodeProjectedStock').textContent=String(newStock);
+        $('#barcodeStatus').textContent=`Entrada registrada: +${qty}. Novo saldo: ${newStock}.`;
+      }else{
+        const response=await fetch('/api/barcode-stock',{
+          method:'POST',
+          headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+          body:JSON.stringify({action:'receive',code:barcodeCurrentCode,quantity:qty,note})
+        });
+        const payload=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(payload.error||'Não foi possível registrar a entrada.');
+        if(payload.notFound)throw new Error('O produto não foi mais encontrado no banco.');
+        product.stock=Number(payload.product?.stock??product.stock+qty);
+        $('#barcodeCurrentStock').textContent=String(product.stock);
+        $('#barcodeProjectedAdd').textContent=`+${qty}`;
+        $('#barcodeProjectedStock').textContent=String(product.stock);
+        $('#barcodeStatus').textContent=payload.source==='olist_erp'
+          ? `Entrada sincronizada com a Olist: +${qty}. Novo saldo: ${product.stock}.`
+          : `Entrada registrada: +${qty}. Novo saldo: ${product.stock}.`;
+      }
+
+      button.textContent='Entrada registrada ✓';
+      button.disabled=true;
+      $('#barcodeQty').disabled=true;
+      $('#barcodeQtyMinus').disabled=true;
+      $('#barcodeQtyPlus').disabled=true;
+      $('#barcodeScanAnother').textContent='Escanear próximo produto';
+      if(navigator.vibrate)navigator.vibrate([70,40,70]);
+      if(page==='stock')renderRows();
+    }catch(error){
+      $('#barcodeStatus').textContent=error.message;
+      button.disabled=false;
+      button.textContent='Adicionar ao estoque';
+    }
+  }
+
+  function createProductFromBarcode(code) {
+    closeBarcodeScanner();
+    page='products';
+    render();
+    openEditor();
+    setTimeout(()=>{
+      const barcodeInput=document.querySelector('#variantRows .variant-row [data-vfield="barcode"]');
+      if(barcodeInput){
+        barcodeInput.value=code;
+        barcodeInput.focus();
+      }
+      const nameInput=$('#editForm [name="name"]');
+      if(nameInput&&!nameInput.value)nameInput.focus();
+      notify(`Código ${code} preenchido. Complete o produto e salve.`);
+    },120);
+  }
+
+  function openBarcodeScanner() {
+    ensureBarcodeScanner();
+    barcodeCurrentCode='';
+    barcodeCurrentProduct=null;
+    $('#barcodeManualCode').value='';
+    $('#barcodeResult').hidden=true;
+    $('#barcodeStatus').textContent='';
+    const dialog=$('#barcodeScanner');
+    if(!dialog.open)dialog.showModal();
+    document.body.style.overflow='hidden';
+    startBarcodeCamera();
+  }
+
   function toolbar(label, allowNew = true) {
-    return `<div class="admin-toolbar"><input id="tableSearch" type="search" placeholder="Pesquisar ${esc(label.toLowerCase())}" aria-label="Pesquisar"><div>${allowNew ? `<button id="newRecord" class="button">+ ${label === 'Estoque' ? 'Movimentar estoque' : 'Novo cadastro'}</button>` : ''}</div></div><div id="records"></div>`;
+    const stockScanner=label==='Estoque'?'<button id="barcodeStockOpen" class="button secondary" type="button">▦ Escanear código</button>':'';
+    const createButton=allowNew?`<button id="newRecord" class="button">+ ${label === 'Estoque' ? 'Movimentar estoque' : 'Novo cadastro'}</button>`:'';
+    return `<div class="admin-toolbar"><input id="tableSearch" type="search" placeholder="Pesquisar ${esc(label.toLowerCase())}" aria-label="Pesquisar"><div class="admin-toolbar-actions">${stockScanner}${createButton}</div></div><div id="records"></div>`;
   }
 
   function rowsForCurrent() {
@@ -875,7 +1257,8 @@
       syncLibraryTaxonomy({ renderAfter: true, silent: true });
     }
     $('#adminContent').innerHTML = toolbar(modules[page]);
-    $('#newRecord').onclick = () => openEditor();
+    if($('#newRecord'))$('#newRecord').onclick = () => openEditor();
+    if($('#barcodeStockOpen'))$('#barcodeStockOpen').onclick = openBarcodeScanner;
     $('#tableSearch').oninput = renderRows;
     renderRows();
   }

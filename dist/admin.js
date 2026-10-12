@@ -83,12 +83,11 @@
   let barcodeStream = null;
   let barcodeTimer = null;
   let barcodeDetector = null;
-  let barcodeFallbackScanner = null;
-  let barcodeFallbackMode = false;
   let barcodeCameras = [];
   let barcodeSelectedDeviceId = '';
   let barcodeManualDeviceSelection = false;
   let barcodeBusy = false;
+  let barcodeDecodeRequestBusy = false;
   let barcodeCurrentCode = '';
   let barcodeCurrentProduct = null;
 
@@ -280,11 +279,11 @@
 
     $('#barcodeClose').onclick=closeBarcodeScanner;
     $('#barcodeEnableCamera').onclick=requestBarcodeCamera;
-    $('#barcodeRefreshCameras').onclick=async()=>{await refreshBarcodeCameras(true)};
+    $('#barcodeRefreshCameras').onclick=async()=>{await refreshBarcodeCameras()};
     $('#barcodeCameraSelect').onchange=async event=>{
       barcodeSelectedDeviceId=event.target.value||'';
       barcodeManualDeviceSelection=Boolean(barcodeSelectedDeviceId);
-      await startBarcodeCamera(barcodeSelectedDeviceId);
+      if($('#barcodeScanner')?.open)await startBarcodeCamera(barcodeSelectedDeviceId);
     };
     $('#barcodeScanner').addEventListener('close',stopBarcodeCamera);
     $('#barcodeScanner').addEventListener('click',event=>{if(event.target===$('#barcodeScanner'))closeBarcodeScanner()});
@@ -305,32 +304,22 @@
     $('#barcodePermissionText').textContent=text||(
       state==='denied'
         ? 'A câmera está bloqueada para este site.'
-        : 'A Atletic precisa usar a câmera traseira para ler o código de barras do produto.'
+        : 'A Atletic precisa usar a câmera para ler o código de barras.'
     );
     $('#barcodePermissionHelp').textContent=help||(
       state==='denied'
-        ? 'Abra as permissões do site no navegador, habilite Câmera e depois toque em “Tentar novamente”.'
+        ? 'Libere a câmera nas permissões deste site e tente novamente.'
         : 'Ao tocar no botão, o navegador solicitará sua autorização.'
     );
     const buttonEl=$('#barcodeEnableCamera');
     buttonEl.textContent=button;
-    buttonEl.disabled=false;
+    buttonEl.disabled=state==='unsupported';
     box.dataset.state=state;
-  }
-
-  async function barcodeCameraPermissionState() {
-    if(!navigator.permissions?.query)return 'prompt';
-    try{
-      const permission=await navigator.permissions.query({name:'camera'});
-      return permission?.state||'prompt';
-    }catch{
-      return 'prompt';
-    }
   }
 
   function isIOSLike() {
     return /iPad|iPhone|iPod/i.test(navigator.userAgent)
-      || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+      || (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   }
 
   function cameraPriority(device) {
@@ -342,52 +331,34 @@
     return 4;
   }
 
-  async function refreshBarcodeCameras(forceLabelRefresh=false) {
+  async function refreshBarcodeCameras() {
     const controls=$('#barcodeCameraControls');
     const select=$('#barcodeCameraSelect');
     if(!navigator.mediaDevices?.enumerateDevices||!select)return [];
 
-    let devices=[];
     try{
-      devices=(await navigator.mediaDevices.enumerateDevices()).filter(device=>device.kind==='videoinput');
+      barcodeCameras=(await navigator.mediaDevices.enumerateDevices())
+        .filter(device=>device.kind==='videoinput')
+        .sort((a,b)=>cameraPriority(a)-cameraPriority(b));
     }catch{
-      devices=[];
+      barcodeCameras=[];
     }
 
-    if(forceLabelRefresh&&devices.some(device=>!device.label)&&navigator.mediaDevices?.getUserMedia){
-      let probe=null;
-      try{probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false})}catch{}
-      if(probe)probe.getTracks().forEach(track=>track.stop());
-      try{
-        devices=(await navigator.mediaDevices.enumerateDevices()).filter(device=>device.kind==='videoinput');
-      }catch{}
-    }
-
-    devices.sort((a,b)=>cameraPriority(a)-cameraPriority(b));
-    barcodeCameras=devices;
-    controls.hidden=!devices.length;
-
-    const previous=barcodeSelectedDeviceId||select.value;
-    const autoLabel=isIOSLike()?'Automático — câmera traseira (recomendado)':'Automático — câmera traseira';
-    select.innerHTML=`<option value="">${autoLabel}</option>`+devices.map((device,index)=>{
+    controls.hidden=!barcodeCameras.length;
+    const autoLabel=isIOSLike()?'Automático — câmera traseira':'Automático — câmera';
+    select.innerHTML=`<option value="">${autoLabel}</option>`+barcodeCameras.map((device,index)=>{
       const label=device.label||`Câmera ${index+1}`;
       return `<option value="${esc(device.deviceId)}">${esc(label)}</option>`;
     }).join('');
 
-    if(barcodeManualDeviceSelection&&previous&&devices.some(device=>device.deviceId===previous)){
-      barcodeSelectedDeviceId=previous;
-      select.value=previous;
+    if(barcodeManualDeviceSelection&&barcodeSelectedDeviceId&&barcodeCameras.some(device=>device.deviceId===barcodeSelectedDeviceId)){
+      select.value=barcodeSelectedDeviceId;
     }else{
       barcodeSelectedDeviceId='';
+      barcodeManualDeviceSelection=false;
       select.value='';
     }
-
-    return devices;
-  }
-
-  async function getPreferredBarcodeDeviceId(forceRefresh=false) {
-    const devices=await refreshBarcodeCameras(forceRefresh);
-    return barcodeSelectedDeviceId||devices[0]?.deviceId||'';
+    return barcodeCameras;
   }
 
   async function prepareBarcodeCamera() {
@@ -395,7 +366,6 @@
     $('#barcodeCameraPanel').hidden=false;
     $('#barcodeResult').hidden=true;
     $('#barcodeStatus').textContent='';
-    const message=$('#barcodeCameraMessage');
 
     if(!navigator.mediaDevices?.getUserMedia){
       showBarcodePermission({
@@ -404,370 +374,215 @@
         help:'Você ainda pode digitar o código de barras manualmente abaixo.',
         button:'Câmera indisponível'
       });
-      $('#barcodeEnableCamera').disabled=true;
       return;
     }
 
-    const state=await barcodeCameraPermissionState();
-    if(state==='granted'){
-      await refreshBarcodeCameras(true);
-      await startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'');
-      return;
-    }
-    if(state==='denied'){
-      showBarcodePermission({
-        state:'denied',
-        text:'A permissão da câmera está bloqueada neste navegador.',
-        help:'Toque no cadeado/ícone ao lado do endereço do site → Permissões → Câmera → Permitir. Depois volte e toque em “Tentar novamente”.',
-        button:'Tentar novamente'
-      });
-      return;
-    }
-    showBarcodePermission();
+    showBarcodePermission({
+      state:'prompt',
+      text:'Toque em “Ativar câmera” para abrir a câmera do aparelho.',
+      help:'No celular será usada a câmera traseira. Em computador você poderá escolher a webcam.'
+    });
   }
 
   async function requestBarcodeCamera() {
     const button=$('#barcodeEnableCamera');
     button.disabled=true;
-    button.textContent='Aguardando permissão…';
-
-    let probe=null;
-    try{
-      probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-      if(probe)probe.getTracks().forEach(track=>track.stop());
-      await refreshBarcodeCameras(true);
-      await startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'');
-    }catch(error){
-      if(probe)probe.getTracks().forEach(track=>track.stop());
-      showBarcodePermission({
-        state:'denied',
-        text:error?.name==='NotAllowedError'?'O navegador não recebeu permissão para usar a câmera.':'Não foi possível acessar nenhuma câmera.',
-        help:error?.name==='NotAllowedError'
-          ?'Libere a câmera nas permissões deste site e tente novamente.'
-          :(error?.message||'Verifique se a câmera está conectada e não está sendo usada por outro aplicativo.'),
-        button:'Tentar novamente'
-      });
-    }
+    button.textContent='Abrindo câmera…';
+    await startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'');
   }
 
-  function loadHtml5QrcodeLibrary() {
-    if(window.Html5Qrcode)return Promise.resolve(window.Html5Qrcode);
-    if(window.__atleticHtml5QrcodePromise)return window.__atleticHtml5QrcodePromise;
-
-    window.__atleticHtml5QrcodePromise=new Promise((resolve,reject)=>{
-      const existing=document.querySelector('script[data-atletic-html5-qrcode]');
-      if(existing){
-        existing.addEventListener('load',()=>window.Html5Qrcode?resolve(window.Html5Qrcode):reject(new Error('Leitor de código não carregou.')),{once:true});
-        existing.addEventListener('error',()=>reject(new Error('Falha ao carregar o leitor de código.')),{once:true});
-        return;
-      }
-      const script=document.createElement('script');
-      script.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
-      script.async=true;
-      script.dataset.atleticHtml5Qrcode='1';
-      script.onload=()=>window.Html5Qrcode?resolve(window.Html5Qrcode):reject(new Error('Leitor de código não carregou.'));
-      script.onerror=()=>reject(new Error('Falha ao carregar o leitor de código.'));
-      document.head.appendChild(script);
-    });
-    return window.__atleticHtml5QrcodePromise;
-  }
-
-  async function waitForCameraFrames(video,timeoutMs=2200) {
-    if(!video)return false;
-    const started=Date.now();
-    while(Date.now()-started<timeoutMs){
-      if(video.readyState>=2&&video.videoWidth>0&&video.videoHeight>0){
-        try{
-          const canvas=document.createElement('canvas');
-          canvas.width=Math.min(video.videoWidth,320);
-          canvas.height=Math.max(1,Math.round(canvas.width*(video.videoHeight/video.videoWidth)));
-          const ctx=canvas.getContext('2d',{willReadFrequently:true});
-          ctx.drawImage(video,0,0,canvas.width,canvas.height);
-          const sample=ctx.getImageData(0,0,canvas.width,canvas.height).data;
-          let total=0;
-          let variation=0;
-          let prev=null;
-          const step=Math.max(4,Math.floor(sample.length/4000/4)*4);
-          for(let i=0;i<sample.length;i+=step){
-            const lum=(sample[i]+sample[i+1]+sample[i+2])/3;
-            total+=lum;
-            if(prev!==null)variation+=Math.abs(lum-prev);
-            prev=lum;
-          }
-          const count=Math.max(1,Math.ceil(sample.length/step));
-          const avg=total/count;
-          const diff=variation/count;
-          // A live camera can be dark, but a permanently black virtual stream is near-zero in both metrics.
-          if(avg>2||diff>0.8)return true;
-        }catch{
-          return true;
-        }
-      }
-      await new Promise(resolve=>setTimeout(resolve,180));
-    }
-    return false;
-  }
-
-  async function restartWithAlternateCamera(failedDeviceId='') {
-    const candidates=(barcodeCameras||[])
-      .filter(device=>device.deviceId&&device.deviceId!==failedDeviceId)
-      .sort((a,b)=>cameraPriority(a)-cameraPriority(b));
-
-    for(const device of candidates.slice(0,4)){
-      try{
-        barcodeManualDeviceSelection=true;
-        barcodeSelectedDeviceId=device.deviceId;
-        if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value=device.deviceId;
-        await startBarcodeCamera(device.deviceId,true);
-        return true;
-      }catch{}
-    }
-    barcodeManualDeviceSelection=false;
-    barcodeSelectedDeviceId='';
-    if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value='';
-    return false;
-  }
-
-  async function startFallbackBarcodeScanner(deviceId='') {
-    const message=$('#barcodeCameraMessage');
-    const nativeVideo=$('#barcodeVideo');
-    const reader=$('#barcodeFallbackReader');
-
-    try{
-      // Evita manter duas capturas da câmera abertas ao mesmo tempo.
-      if(barcodeStream){
-        barcodeStream.getTracks().forEach(track=>track.stop());
-        barcodeStream=null;
-      }
-      if(nativeVideo)nativeVideo.srcObject=null;
-
-      await loadHtml5QrcodeLibrary();
-      reader.hidden=false;
-      nativeVideo.hidden=true;
-      barcodeFallbackMode=true;
-
-      if(barcodeFallbackScanner){
-        try{await barcodeFallbackScanner.stop()}catch{}
-        try{await barcodeFallbackScanner.clear()}catch{}
-      }
-
-      const formats=[
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.ITF
-      ].filter(Boolean);
-
-      barcodeFallbackScanner=new Html5Qrcode('barcodeFallbackReader',{formatsToSupport:formats,verbose:false});
-
-      const config={
-        fps:12,
-        qrbox:(viewfinderWidth,viewfinderHeight)=>({
-          width:Math.min(Math.round(viewfinderWidth*.88),520),
-          height:Math.min(Math.round(viewfinderHeight*.34),190)
-        }),
-        aspectRatio:1.3333333333,
-        disableFlip:false,
-        experimentalFeatures:{useBarCodeDetectorIfSupported:true}
+  async function waitForVideoReady(video,timeoutMs=5000) {
+    return new Promise(resolve=>{
+      let finished=false;
+      const done=value=>{
+        if(finished)return;
+        finished=true;
+        clearTimeout(timer);
+        video.removeEventListener('loadedmetadata',check);
+        video.removeEventListener('canplay',check);
+        resolve(value);
       };
+      const check=()=>{
+        if(video.videoWidth>0&&video.videoHeight>0)done(true);
+      };
+      const timer=setTimeout(()=>done(video.videoWidth>0&&video.videoHeight>0),timeoutMs);
+      video.addEventListener('loadedmetadata',check);
+      video.addEventListener('canplay',check);
+      check();
+    });
+  }
 
-      const cameraConfig=deviceId
-        ? {deviceId:{exact:deviceId}}
-        : {facingMode:'environment'};
+  async function openCameraStream(deviceId='') {
+    const preferred=deviceId
+      ? {video:{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}},audio:false}
+      : {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false};
 
-      await barcodeFallbackScanner.start(
-        cameraConfig,
-        config,
-        async decodedText=>{
-          const code=String(decodedText||'').trim();
-          if(!code||code===barcodeCurrentCode)return;
-          barcodeCurrentCode=code;
-          if(navigator.vibrate)navigator.vibrate(90);
-          await stopBarcodeCamera();
-          await lookupBarcodeStock(code);
-        },
-        ()=>{}
-      );
-
-      message.hidden=false;
-      message.textContent='Leitor compatível ativo — centralize o código de barras dentro da marcação.';
+    try{
+      return await navigator.mediaDevices.getUserMedia(preferred);
     }catch(error){
-      barcodeFallbackMode=false;
-      if(reader)reader.hidden=true;
-      if(nativeVideo)nativeVideo.hidden=false;
-      message.hidden=false;
-      message.textContent='Não foi possível iniciar o leitor automático. Você ainda pode digitar o código abaixo.';
-      $('#barcodeStatus').textContent=error?.message||'Falha ao iniciar o leitor de código.';
+      if(deviceId)throw error;
+      // iOS/WebViews can reject facingMode even though the camera itself is available.
+      return navigator.mediaDevices.getUserMedia({video:true,audio:false});
     }
   }
 
-  async function startBarcodeCamera(deviceId='',internalRetry=false) {
+  async function startBarcodeCamera(deviceId='') {
     await stopBarcodeCamera();
-    const message=$('#barcodeCameraMessage');
+
     const video=$('#barcodeVideo');
+    const message=$('#barcodeCameraMessage');
     const permissionBox=$('#barcodePermission');
     $('#barcodeCameraPanel').hidden=false;
     $('#barcodeResult').hidden=true;
     $('#barcodeStatus').textContent='';
 
-    if(!navigator.mediaDevices?.getUserMedia){
-      showBarcodePermission({
-        state:'unsupported',
-        text:'Este navegador não disponibiliza acesso à câmera.',
-        help:'Digite o código de barras manualmente abaixo.',
-        button:'Câmera indisponível'
-      });
-      $('#barcodeEnableCamera').disabled=true;
-      return;
-    }
-
     try{
-      // Esta chamada é o que dispara a solicitação nativa de permissão do navegador.
-      const videoConstraints=deviceId
-        ? {deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}}
-        : {facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}};
-
-      barcodeStream=await navigator.mediaDevices.getUserMedia({
-        video:videoConstraints,
-        audio:false
-      });
-
-      permissionBox.hidden=true;
-      await refreshBarcodeCameras(false);
-      if($('#barcodeCameraControls'))$('#barcodeCameraControls').hidden=!barcodeCameras.length;
+      barcodeStream=await openCameraStream(deviceId);
+      video.hidden=false;
       video.srcObject=barcodeStream;
+      video.muted=true;
+      video.autoplay=true;
+      video.playsInline=true;
       video.setAttribute('playsinline','');
       video.setAttribute('webkit-playsinline','');
-      video.muted=true;
-      await video.play();
 
+      try{await video.play()}catch{}
+      const ready=await waitForVideoReady(video);
+      if(!ready)throw Object.assign(new Error('A câmera abriu, mas o navegador não entregou o vídeo.'),{name:'VideoNotReadyError'});
+
+      permissionBox.hidden=true;
       message.hidden=false;
-      message.textContent='Validando imagem da câmera…';
+      message.textContent='Câmera ativa — aproxime o código de barras da marcação.';
 
-      const hasFrames=await waitForCameraFrames(video);
-      if(!hasFrames){
-        await stopBarcodeCamera();
-        if(!internalRetry){
-          const switched=await restartWithAlternateCamera(deviceId);
-          if(switched)return;
+      await refreshBarcodeCameras();
+      if(deviceId){
+        barcodeSelectedDeviceId=deviceId;
+        barcodeManualDeviceSelection=true;
+        if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value=deviceId;
+      }
+
+      if('BarcodeDetector' in window){
+        try{
+          const formats=BarcodeDetector.getSupportedFormats
+            ? (await BarcodeDetector.getSupportedFormats()).filter(format=>['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf'].includes(format))
+            : [];
+          barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
+        }catch{
+          barcodeDetector=null;
         }
-        showBarcodePermission({
-          state:'error',
-          text:'A câmera foi reconhecida, mas não entregou imagem.',
-          help:'Escolha outra câmera na lista abaixo ou toque em “Atualizar câmeras”. Em iPhone, prefira “Automático — câmera traseira”.',
-          button:'Tentar novamente'
-        });
-        await refreshBarcodeCameras(false);
-        return;
       }
 
-      if(!('BarcodeDetector' in window)){
-        message.textContent='Câmera autorizada. Iniciando leitor compatível…';
-        await startFallbackBarcodeScanner(barcodeManualDeviceSelection?(deviceId||barcodeSelectedDeviceId):'');
-        return;
-      }
-
-      const supported=BarcodeDetector.getSupportedFormats?await BarcodeDetector.getSupportedFormats():[];
-      const preferred=['ean_13','ean_8','upc_a','upc_e','code_128'];
-      const formats=supported.length?preferred.filter(format=>supported.includes(format)):preferred;
-      try{
-        barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
-        message.textContent='Câmera ativa — centralize o código de barras dentro da marcação.';
-        barcodeBusy=false;
-        barcodeScanFrame();
-      }catch{
-        message.textContent='Iniciando leitor compatível…';
-        await startFallbackBarcodeScanner(deviceId||barcodeSelectedDeviceId);
-      }
+      barcodeBusy=false;
+      barcodeDecodeRequestBusy=false;
+      barcodeScanFrame();
     }catch(error){
-      stopBarcodeCamera();
-      if(error?.name==='NotAllowedError'||error?.name==='PermissionDeniedError'){
-        showBarcodePermission({
-          state:'denied',
-          text:'O navegador não recebeu permissão para usar a câmera.',
-          help:'Se você tocou em “Bloquear”, abra as permissões deste site, altere Câmera para “Permitir” e tente novamente.',
-          button:'Tentar novamente'
-        });
-      }else if(error?.name==='NotFoundError'||error?.name==='DevicesNotFoundError'){
-        showBarcodePermission({
-          state:'unavailable',
-          text:'Nenhuma câmera foi encontrada neste dispositivo.',
-          help:'Conecte uma webcam ou use a câmera do celular. Você também pode digitar o código manualmente.',
-          button:'Tentar novamente'
-        });
-      }else if(error?.name==='NotReadableError'||error?.name==='TrackStartError'){
-        showBarcodePermission({
-          state:'error',
-          text:'A câmera foi encontrada, mas está ocupada.',
-          help:'Feche outros aplicativos que estejam usando a câmera (WhatsApp, Meet, Zoom, Teams ou outro navegador) e tente novamente.',
-          button:'Tentar novamente'
-        });
-      }else if(error?.name==='OverconstrainedError'||error?.name==='ConstraintNotSatisfiedError'){
-        barcodeSelectedDeviceId='';
-        showBarcodePermission({
-          state:'error',
-          text:'A câmera selecionada não pôde ser iniciada.',
-          help:'Toque em “Tentar novamente” para o sistema escolher outra câmera disponível.',
-          button:'Tentar novamente'
-        });
-      }else{
-        showBarcodePermission({
-          state:'error',
-          text:'Não foi possível iniciar a câmera.',
-          help:error?.message||'Verifique a permissão da câmera e tente novamente.',
-          button:'Tentar novamente'
-        });
-      }
+      await stopBarcodeCamera();
+      const denied=error?.name==='NotAllowedError'||error?.name==='PermissionDeniedError';
+      const missing=error?.name==='NotFoundError'||error?.name==='DevicesNotFoundError';
+      const busy=error?.name==='NotReadableError'||error?.name==='TrackStartError';
+
+      showBarcodePermission({
+        state:denied?'denied':'error',
+        text:denied
+          ?'O navegador não recebeu permissão para usar a câmera.'
+          :missing
+            ?'Nenhuma câmera foi encontrada neste aparelho.'
+            :busy
+              ?'A câmera está sendo usada por outro aplicativo.'
+              :'Não foi possível abrir a câmera.',
+        help:denied
+          ?'No iPhone, abra as configurações/permissões deste site e deixe Câmera como Permitir.'
+          :busy
+            ?'Feche outros apps ou abas que estejam usando a câmera e tente novamente.'
+            :(error?.message||'Tente novamente ou selecione outra câmera.'),
+        button:'Tentar novamente'
+      });
+      await refreshBarcodeCameras();
+    }
+  }
+
+  function barcodeFrameData(video) {
+    if(!video||video.readyState<2||!video.videoWidth||!video.videoHeight)return '';
+    const canvas=document.createElement('canvas');
+    const maxWidth=720;
+    const scale=Math.min(1,maxWidth/video.videoWidth);
+    canvas.width=Math.max(1,Math.round(video.videoWidth*scale));
+    canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    return canvas.toDataURL('image/jpeg',0.72);
+  }
+
+  async function decodeBarcodeFrameOnServer(video) {
+    if(barcodeDecodeRequestBusy)return null;
+    const image=barcodeFrameData(video);
+    if(!image)return null;
+
+    barcodeDecodeRequestBusy=true;
+    try{
+      const response=await fetch('/api/barcode-decode',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${adminToken()}`},
+        body:JSON.stringify({image})
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)return null;
+      return payload.found?String(payload.result?.text||'').trim():null;
+    }catch{
+      return null;
+    }finally{
+      barcodeDecodeRequestBusy=false;
     }
   }
 
   async function barcodeScanFrame() {
-    if(!barcodeStream||!barcodeDetector)return;
+    if(!barcodeStream)return;
     const video=$('#barcodeVideo');
+    let code='';
+
     try{
       if(!barcodeBusy&&video?.readyState>=2){
         barcodeBusy=true;
-        const codes=await barcodeDetector.detect(video);
-        const hit=codes?.find(item=>String(item.rawValue||'').trim());
-        if(hit){
-          const code=String(hit.rawValue).trim();
-          if(code!==barcodeCurrentCode){
-            barcodeCurrentCode=code;
-            if(navigator.vibrate)navigator.vibrate(90);
-            stopBarcodeCamera();
-            await lookupBarcodeStock(code);
-            return;
-          }
+
+        if(barcodeDetector){
+          try{
+            const codes=await barcodeDetector.detect(video);
+            const hit=codes?.find(item=>String(item.rawValue||'').trim());
+            if(hit)code=String(hit.rawValue).trim();
+          }catch{}
+        }
+
+        if(!code)code=await decodeBarcodeFrameOnServer(video)||'';
+
+        if(code&&code!==barcodeCurrentCode){
+          barcodeCurrentCode=code;
+          if(navigator.vibrate)navigator.vibrate(90);
+          await stopBarcodeCamera();
+          await lookupBarcodeStock(code);
+          return;
         }
       }
-    }catch{}
-    finally{barcodeBusy=false}
-    barcodeTimer=setTimeout(barcodeScanFrame,180);
+    }finally{
+      barcodeBusy=false;
+    }
+
+    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,650);
   }
 
   async function stopBarcodeCamera() {
     clearTimeout(barcodeTimer);
     barcodeTimer=null;
+    barcodeDecodeRequestBusy=false;
+
     if(barcodeStream){
       barcodeStream.getTracks().forEach(track=>track.stop());
       barcodeStream=null;
     }
 
-    if(barcodeFallbackScanner){
-      try{
-        const state=barcodeFallbackScanner.getState?.();
-        if(state===2||state===3)await barcodeFallbackScanner.stop();
-      }catch{}
-      try{await barcodeFallbackScanner.clear()}catch{}
-      barcodeFallbackScanner=null;
-    }
-
     const video=$('#barcodeVideo');
     const reader=$('#barcodeFallbackReader');
     if(video){
+      try{video.pause()}catch{}
       video.srcObject=null;
       video.hidden=false;
     }
@@ -776,7 +591,6 @@
       reader.innerHTML='';
     }
 
-    barcodeFallbackMode=false;
     barcodeDetector=null;
     barcodeBusy=false;
   }
@@ -841,7 +655,7 @@
     qty.oninput=updateProjection;
     $('#barcodeQtyMinus').onclick=()=>{qty.value=Math.max(1,Number(qty.value||1)-1);updateProjection()};
     $('#barcodeQtyPlus').onclick=()=>{qty.value=Number(qty.value||1)+1;updateProjection()};
-    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;startBarcodeCamera(barcodeManualDeviceSelection?barcodeSelectedDeviceId:'')};
+    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;prepareBarcodeCamera()};
     $('#barcodeReceive').onclick=receiveBarcodeStock;
     setTimeout(()=>qty.focus(),80);
   }

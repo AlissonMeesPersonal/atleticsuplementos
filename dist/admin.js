@@ -322,8 +322,22 @@
       || (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   }
 
+  function isMobileLike() {
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+      || (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  }
+
+  function isVirtualCameraLabel(label='') {
+    return /obs|virtual|snap camera|manycam|droidcam|iriun|epoccam|ndi|vcam/i.test(String(label));
+  }
+
   function cameraPriority(device) {
     const label=String(device?.label||'').toLowerCase();
+    if(isVirtualCameraLabel(label))return 50;
+    if(!isMobileLike()){
+      if(/integrated|built-in|facetime|hd webcam|webcam|camera/i.test(label))return 0;
+      return 5;
+    }
     if(/traseira|back|rear|environment/.test(label)&&!/dupla|dual|tripla|triple|tele|ultra/.test(label))return 0;
     if(/wide|grande-angular/.test(label)&&!/dupla|dual|ultra/.test(label))return 1;
     if(/traseira|back|rear/.test(label))return 2;
@@ -345,7 +359,11 @@
     }
 
     controls.hidden=!barcodeCameras.length;
-    const autoLabel=isIOSLike()?'Automático — câmera traseira':'Automático — câmera';
+    const autoLabel=isIOSLike()
+      ?'Automático — câmera traseira'
+      :isMobileLike()
+        ?'Automático — câmera traseira'
+        :'Automático — webcam padrão';
     select.innerHTML=`<option value="">${autoLabel}</option>`+barcodeCameras.map((device,index)=>{
       const label=device.label||`Câmera ${index+1}`;
       return `<option value="${esc(device.deviceId)}">${esc(label)}</option>`;
@@ -377,10 +395,16 @@
       return;
     }
 
+    await refreshBarcodeCameras();
+
     showBarcodePermission({
       state:'prompt',
-      text:'Toque em “Ativar câmera” para abrir a câmera do aparelho.',
-      help:'No celular será usada a câmera traseira. Em computador você poderá escolher a webcam.'
+      text:isMobileLike()
+        ?'Toque em “Ativar câmera” para abrir a câmera do aparelho.'
+        :'Clique em “Ativar câmera” para abrir a webcam do computador.',
+      help:isMobileLike()
+        ?'No celular será usada a câmera traseira. Você poderá trocar de câmera depois.'
+        :'O navegador solicitará acesso à webcam. Depois você poderá escolher outra câmera na lista.'
     });
   }
 
@@ -413,15 +437,27 @@
   }
 
   async function openCameraStream(deviceId='') {
-    const preferred=deviceId
-      ? {video:{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}},audio:false}
-      : {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false};
+    if(deviceId){
+      return navigator.mediaDevices.getUserMedia({
+        video:{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}},
+        audio:false
+      });
+    }
+
+    if(!isMobileLike()){
+      // Desktop/web: não usa facingMode, que pode escolher câmera virtual ou falhar em webcams.
+      return navigator.mediaDevices.getUserMedia({
+        video:{width:{ideal:1280},height:{ideal:720}},
+        audio:false
+      });
+    }
 
     try{
-      return await navigator.mediaDevices.getUserMedia(preferred);
-    }catch(error){
-      if(deviceId)throw error;
-      // iOS/WebViews can reject facingMode even though the camera itself is available.
+      return await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+        audio:false
+      });
+    }catch{
       return navigator.mediaDevices.getUserMedia({video:true,audio:false});
     }
   }
@@ -438,6 +474,16 @@
 
     try{
       barcodeStream=await openCameraStream(deviceId);
+
+      const activeTrack=barcodeStream.getVideoTracks?.()[0]||null;
+      const activeSettings=activeTrack?.getSettings?.()||{};
+      const activeDeviceId=activeSettings.deviceId||deviceId||'';
+
+      if(!isMobileLike()&&activeDeviceId){
+        barcodeSelectedDeviceId=activeDeviceId;
+        barcodeManualDeviceSelection=true;
+      }
+
       video.hidden=false;
       video.srcObject=barcodeStream;
       video.muted=true;
@@ -455,11 +501,18 @@
       message.textContent='Câmera ativa — aproxime o código de barras da marcação.';
 
       await refreshBarcodeCameras();
-      if(deviceId){
-        barcodeSelectedDeviceId=deviceId;
+
+      const resolvedDeviceId=activeDeviceId||deviceId||'';
+      if(resolvedDeviceId&&barcodeCameras.some(camera=>camera.deviceId===resolvedDeviceId)){
+        barcodeSelectedDeviceId=resolvedDeviceId;
         barcodeManualDeviceSelection=true;
-        if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value=deviceId;
+        if($('#barcodeCameraSelect'))$('#barcodeCameraSelect').value=resolvedDeviceId;
       }
+
+      const width=activeSettings.width||video.videoWidth||0;
+      const height=activeSettings.height||video.videoHeight||0;
+      const cameraLabel=activeTrack?.label||barcodeCameras.find(camera=>camera.deviceId===resolvedDeviceId)?.label||'Câmera';
+      message.textContent=`${cameraLabel} ativa${width&&height?` · ${width}×${height}`:''} — aproxime o código de barras da marcação.`;
 
       if('BarcodeDetector' in window){
         try{
@@ -491,9 +544,11 @@
               ?'A câmera está sendo usada por outro aplicativo.'
               :'Não foi possível abrir a câmera.',
         help:denied
-          ?'No iPhone, abra as configurações/permissões deste site e deixe Câmera como Permitir.'
+          ?(isMobileLike()
+            ?'Abra as permissões deste site no navegador e deixe Câmera como Permitir.'
+            :'Clique no ícone de câmera/cadeado ao lado do endereço do site, permita o uso da câmera e recarregue a página.')
           :busy
-            ?'Feche outros apps ou abas que estejam usando a câmera e tente novamente.'
+            ?'Feche Meet, Zoom, Teams, WhatsApp ou outro aplicativo/aba que esteja usando a webcam e tente novamente.'
             :(error?.message||'Tente novamente ou selecione outra câmera.'),
         button:'Tentar novamente'
       });
@@ -566,7 +621,7 @@
       barcodeBusy=false;
     }
 
-    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,650);
+    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,isMobileLike()?750:900);
   }
 
   async function stopBarcodeCamera() {

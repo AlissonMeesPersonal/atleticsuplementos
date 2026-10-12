@@ -266,3 +266,12 @@
 .barcode-video-wrap>.barcode-target{z-index:2}
 .barcode-video-wrap>.barcode-camera-message{z-index:5}
 .barcode-video-wrap>.barcode-permission{z-index:6}
+
+.barcode-camera-controls{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-top:10px}
+.barcode-camera-controls[hidden]{display:none!important}
+.barcode-camera-controls label{display:grid;gap:6px;font-size:10px;font-weight:700}
+.barcode-camera-controls select{min-height:42px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}
+@media(max-width:620px){
+  .barcode-camera-controls{grid-template-columns:1fr}
+  .barcode-camera-controls .button{width:100%}
+}

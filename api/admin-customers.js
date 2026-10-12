@@ -44,7 +44,24 @@ async function sb(ctx,path,{method='GET',body,prefer=''}={}){
 
 const clean=value=>String(value??'').trim();
 const lower=value=>clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const num=value=>Number(value||0);
+
+function daysSince(value){
+  if(!value)return null;
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return null;
+  return Math.max(0,Math.floor((Date.now()-date.getTime())/86400000));
+}
+
+function crmStatus(purchaseCount,lastPurchaseDate,active=true){
+  if(active===false)return {key:'inactive',label:'Inativo'};
+  if(!purchaseCount)return {key:'lead',label:'Nunca comprou'};
+  const days=daysSince(lastPurchaseDate);
+  if(days===null)return {key:'lead',label:'Nunca comprou'};
+  if(days<=30)return {key:'active30',label:'Ativo'};
+  if(days<=60)return {key:'attention',label:'Atenção'};
+  if(days<=90)return {key:'risk',label:'Em risco'};
+  return {key:'reactivate',label:'Reativar'};
+}
 
 function summarizeCustomers(customers,addresses,orders){
   const addressMap=new Map();
@@ -55,20 +72,46 @@ function summarizeCustomers(customers,addresses,orders){
   const orderMap=new Map();
   for(const order of orders){
     if(!order.customer_id)continue;
-    const current=orderMap.get(order.customer_id)||{count:0,paidCount:0,spent:0,lastOrder:null};
-    current.count++;
-    if(order.payment_status==='paid'){
-      current.paidCount++;
-      current.spent+=num(order.total);
-    }
+    const current=orderMap.get(order.customer_id)||{
+      orderCount:0,
+      purchaseCount:0,
+      lastOrder:null,
+      lastPurchase:null,
+      firstPurchase:null
+    };
+    current.orderCount++;
+
     const stamp=order.placed_at||order.created_at||'';
-    if(!current.lastOrder||stamp>String(current.lastOrder.placed_at||current.lastOrder.created_at||''))current.lastOrder=order;
+    if(!current.lastOrder||stamp>String(current.lastOrder.placed_at||current.lastOrder.created_at||'')){
+      current.lastOrder=order;
+    }
+
+    if(order.payment_status==='paid'){
+      current.purchaseCount++;
+      const purchaseStamp=order.paid_at||order.placed_at||order.created_at||'';
+      if(!current.lastPurchase||purchaseStamp>String(current.lastPurchase.paid_at||current.lastPurchase.placed_at||current.lastPurchase.created_at||'')){
+        current.lastPurchase=order;
+      }
+      if(!current.firstPurchase||purchaseStamp<String(current.firstPurchase.paid_at||current.firstPurchase.placed_at||current.firstPurchase.created_at||'')){
+        current.firstPurchase=order;
+      }
+    }
     orderMap.set(order.customer_id,current);
   }
 
   return customers.map(customer=>{
     const address=addressMap.get(customer.id)||null;
-    const orderSummary=orderMap.get(customer.id)||{count:0,paidCount:0,spent:0,lastOrder:null};
+    const summary=orderMap.get(customer.id)||{
+      orderCount:0,purchaseCount:0,lastOrder:null,lastPurchase:null,firstPurchase:null
+    };
+    const lastPurchaseDate=summary.lastPurchase
+      ? summary.lastPurchase.paid_at||summary.lastPurchase.placed_at||summary.lastPurchase.created_at
+      : null;
+    const firstPurchaseDate=summary.firstPurchase
+      ? summary.firstPurchase.paid_at||summary.firstPurchase.placed_at||summary.firstPurchase.created_at
+      : null;
+    const crm=crmStatus(summary.purchaseCount,lastPurchaseDate,customer.active!==false);
+
     return {
       ...customer,
       address:address?{
@@ -77,16 +120,19 @@ function summarizeCustomers(customers,addresses,orders){
         neighborhood:address.neighborhood||'',
         postalCode:address.postal_code||''
       }:null,
-      orderCount:orderSummary.count,
-      paidOrderCount:orderSummary.paidCount,
-      totalSpent:Number(orderSummary.spent.toFixed(2)),
-      lastOrder:orderSummary.lastOrder?{
-        id:orderSummary.lastOrder.id,
-        number:orderSummary.lastOrder.order_number,
-        status:orderSummary.lastOrder.status,
-        paymentStatus:orderSummary.lastOrder.payment_status,
-        total:num(orderSummary.lastOrder.total),
-        date:orderSummary.lastOrder.placed_at||orderSummary.lastOrder.created_at
+      orderCount:summary.orderCount,
+      purchaseCount:summary.purchaseCount,
+      firstPurchaseDate,
+      lastPurchaseDate,
+      daysSincePurchase:daysSince(lastPurchaseDate),
+      crmStatus:crm.key,
+      crmLabel:crm.label,
+      lastOrder:summary.lastOrder?{
+        id:summary.lastOrder.id,
+        number:summary.lastOrder.order_number,
+        status:summary.lastOrder.status,
+        paymentStatus:summary.lastOrder.payment_status,
+        date:summary.lastOrder.placed_at||summary.lastOrder.created_at
       }:null
     };
   });
@@ -96,10 +142,11 @@ async function listCustomers(ctx,req){
   const [customers,addresses,orders]=await Promise.all([
     sb(ctx,'customers?select=id,auth_user_id,full_name,email,phone,cpf,birth_date,accepts_marketing,notes,metadata,active,created_at,updated_at,source_provider,external_id&order=created_at.desc&limit=2000'),
     sb(ctx,'customer_addresses?select=id,customer_id,label,postal_code,street,number,complement,neighborhood,city,state,is_default,created_at&order=is_default.desc,created_at.asc&limit=4000'),
-    sb(ctx,'orders?select=id,order_number,customer_id,status,payment_status,total,placed_at,created_at&order=created_at.desc&limit=10000')
+    sb(ctx,'orders?select=id,order_number,customer_id,status,payment_status,paid_at,placed_at,created_at&order=created_at.desc&limit=10000')
   ]);
 
-  let rows=summarizeCustomers(customers||[],addresses||[],orders||[]);
+  const all=summarizeCustomers(customers||[],addresses||[],orders||[]);
+  let rows=[...all];
   const q=lower(req.query?.q);
   const status=clean(req.query?.status);
   const origin=clean(req.query?.origin);
@@ -109,28 +156,27 @@ async function listCustomers(ctx,req){
       row.full_name,row.email,row.phone,row.cpf,row.address?.city,row.address?.state
     ].filter(Boolean).join(' ')).includes(q));
   }
+
   if(status==='active')rows=rows.filter(row=>row.active!==false);
   if(status==='inactive')rows=rows.filter(row=>row.active===false);
-  if(status==='buyers')rows=rows.filter(row=>row.orderCount>0);
-  if(status==='leads')rows=rows.filter(row=>row.orderCount===0);
+  if(status==='buyers')rows=rows.filter(row=>row.purchaseCount>0);
+  if(status==='leads')rows=rows.filter(row=>row.purchaseCount===0);
+  if(['active30','attention','risk','reactivate'].includes(status))rows=rows.filter(row=>row.crmStatus===status);
+
   if(origin==='olist')rows=rows.filter(row=>row.source_provider==='olist_erp');
   if(origin==='store')rows=rows.filter(row=>row.auth_user_id||row.source_provider!=='olist_erp');
-
-  const all=summarizeCustomers(customers||[],addresses||[],orders||[]);
-  const totalSpent=all.reduce((sum,row)=>sum+row.totalSpent,0);
-  const buyers=all.filter(row=>row.orderCount>0).length;
-  const paidOrders=all.reduce((sum,row)=>sum+row.paidOrderCount,0);
 
   return {
     customers:rows,
     metrics:{
       total:all.length,
-      active:all.filter(row=>row.active!==false).length,
-      buyers,
-      leads:all.length-buyers,
-      paidOrders,
-      totalSpent:Number(totalSpent.toFixed(2)),
-      averageTicket:paidOrders?Number((totalSpent/paidOrders).toFixed(2)):0
+      buyers:all.filter(row=>row.purchaseCount>0).length,
+      leads:all.filter(row=>row.purchaseCount===0).length,
+      active30:all.filter(row=>row.crmStatus==='active30').length,
+      attention:all.filter(row=>row.crmStatus==='attention').length,
+      risk:all.filter(row=>row.crmStatus==='risk').length,
+      reactivate:all.filter(row=>row.crmStatus==='reactivate').length,
+      inactive:all.filter(row=>row.active===false).length
     }
   };
 }
@@ -140,10 +186,29 @@ async function customerDetail(ctx,id){
   const [customer,address,orders]=await Promise.all([
     sb(ctx,`customers?id=eq.${encoded}&select=*&limit=1`),
     sb(ctx,`customer_addresses?customer_id=eq.${encoded}&select=*&order=is_default.desc,created_at.asc`),
-    sb(ctx,`orders?customer_id=eq.${encoded}&select=id,order_number,status,payment_status,total,shipping_total,discount_total,tracking_code,tracking_url,placed_at,paid_at,created_at,erp_provider,erp_order_number,invoice_number,invoice_status&order=created_at.desc&limit=100`)
+    sb(ctx,`orders?customer_id=eq.${encoded}&select=id,order_number,status,payment_status,tracking_code,tracking_url,placed_at,paid_at,created_at,erp_provider,erp_order_number,invoice_number,invoice_status&order=created_at.desc&limit=100`)
   ]);
   if(!customer?.[0])throw new Error('Cliente não encontrado.');
-  return {customer:customer[0],addresses:address||[],orders:orders||[]};
+
+  const paid=(orders||[]).filter(order=>order.payment_status==='paid');
+  const lastPurchase=paid
+    .slice()
+    .sort((a,b)=>new Date(b.paid_at||b.placed_at||b.created_at||0)-new Date(a.paid_at||a.placed_at||a.created_at||0))[0]||null;
+  const lastPurchaseDate=lastPurchase?lastPurchase.paid_at||lastPurchase.placed_at||lastPurchase.created_at:null;
+  const crm=crmStatus(paid.length,lastPurchaseDate,customer[0].active!==false);
+
+  return {
+    customer:customer[0],
+    addresses:address||[],
+    orders:orders||[],
+    crm:{
+      purchaseCount:paid.length,
+      lastPurchaseDate,
+      daysSincePurchase:daysSince(lastPurchaseDate),
+      status:crm.key,
+      label:crm.label
+    }
+  };
 }
 
 async function updateCustomer(ctx,id,body){
@@ -166,7 +231,7 @@ async function updateCustomer(ctx,id,body){
 
 export default async function handler(req,res){
   const ctx=await validateAdmin(req);
-  if(!ctx)return json(res,401,{error:'Administrador autenticado necessário.'});
+  if(!ctx)return json(res,401,{error:'Administrador ou gestor autenticado necessário.'});
 
   try{
     if(req.method==='GET'){

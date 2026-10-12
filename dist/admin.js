@@ -1497,6 +1497,18 @@
     }
   }
 
+  function customerRecencyText(days,purchaseCount=0) {
+    if(!purchaseCount||days===null||days===undefined)return 'Nunca comprou';
+    const value=Math.max(0,Number(days||0));
+    if(value===0)return 'Hoje';
+    if(value===1)return 'Há 1 dia';
+    return `Há ${value} dias`;
+  }
+
+  function customerCrmClass(status='') {
+    return ['active30','attention','risk','reactivate','lead','inactive'].includes(status)?status:'lead';
+  }
+
   async function openCustomerDetail(customerId) {
     let dialog=$('#customerDetailDialog');
     if(!dialog){
@@ -1504,7 +1516,7 @@
         <dialog id="customerDetailDialog" class="customer-dialog">
           <div class="customer-dialog-shell">
             <header class="customer-dialog-head">
-              <div><p class="eyebrow">CLIENTE</p><h2 id="customerDetailTitle">Carregando…</h2></div>
+              <div><p class="eyebrow">CLIENTE / CRM</p><h2 id="customerDetailTitle">Carregando…</h2></div>
               <button type="button" id="customerDetailClose" aria-label="Fechar">×</button>
             </header>
             <div id="customerDetailBody"><div class="empty-panel">Carregando cliente…</div></div>
@@ -1525,14 +1537,14 @@
       const customer=payload.customer;
       const addresses=payload.addresses||[];
       const orders=payload.orders||[];
-      const totalSpent=orders.filter(order=>order.payment_status==='paid').reduce((sum,order)=>sum+Number(order.total||0),0);
+      const crm=payload.crm||{};
       const principal=addresses.find(address=>address.is_default)||addresses[0];
 
       $('#customerDetailTitle').textContent=customer.full_name||'Cliente';
       $('#customerDetailBody').innerHTML=`
         <div class="customer-detail-grid">
           <section class="customer-detail-card">
-            <span class="customer-detail-label">Dados</span>
+            <span class="customer-detail-label">Dados do cliente</span>
             <div class="customer-detail-fields">
               <div><small>Nome</small><strong>${esc(customer.full_name||'—')}</strong></div>
               <div><small>E-mail</small><strong>${esc(customer.email||'—')}</strong></div>
@@ -1544,11 +1556,12 @@
           </section>
 
           <section class="customer-detail-card">
-            <span class="customer-detail-label">Resumo comercial</span>
+            <span class="customer-detail-label">Relacionamento</span>
             <div class="customer-detail-metrics">
-              <div><small>Pedidos</small><strong>${orders.length}</strong></div>
-              <div><small>Total pago</small><strong>${dbMoney(totalSpent)}</strong></div>
-              <div><small>Marketing</small><strong>${customer.accepts_marketing?'Aceita':'Não aceita'}</strong></div>
+              <div><small>Compras realizadas</small><strong>${Number(crm.purchaseCount||0)}</strong></div>
+              <div><small>Última compra</small><strong>${crm.lastPurchaseDate?customerDate(crm.lastPurchaseDate):'Nunca comprou'}</strong></div>
+              <div><small>Sem comprar</small><strong>${customerRecencyText(crm.daysSincePurchase,crm.purchaseCount)}</strong></div>
+              <div><small>Status CRM</small><span class="crm-badge ${customerCrmClass(crm.status)}">${esc(crm.label||'Nunca comprou')}</span></div>
             </div>
           </section>
         </div>
@@ -1559,14 +1572,13 @@
         </section>
 
         <section class="customer-detail-card">
-          <div class="customer-detail-title-row"><span class="customer-detail-label">Histórico de pedidos</span><strong>${orders.length} pedido(s)</strong></div>
+          <div class="customer-detail-title-row"><span class="customer-detail-label">Histórico de relacionamento</span><strong>${orders.length} pedido(s)</strong></div>
           ${orders.length?`
-            <div class="customer-orders-list">
+            <div class="customer-orders-list crm-orders">
               ${orders.map(order=>`
                 <article>
                   <div><strong>${esc(order.order_number||order.id)}</strong><small>${customerDate(order.placed_at||order.created_at)}</small></div>
                   <div><span class="badge">${esc(order.status||'—')}</span><small>${esc(order.payment_status||'—')}</small></div>
-                  <strong>${dbMoney(order.total)}</strong>
                 </article>
               `).join('')}
             </div>
@@ -1574,10 +1586,10 @@
         </section>
 
         <section class="customer-detail-card customer-management">
-          <span class="customer-detail-label">Gestão do cliente</span>
+          <span class="customer-detail-label">Gestão CRM</span>
           <label class="customer-toggle"><input id="customerActiveToggle" type="checkbox" ${customer.active!==false?'checked':''}> Cliente ativo</label>
           <label class="customer-toggle"><input id="customerMarketingToggle" type="checkbox" ${customer.accepts_marketing?'checked':''}> Aceita comunicações de marketing</label>
-          <label>Observações<textarea id="customerNotes" rows="4" placeholder="Observações internas sobre o cliente">${esc(customer.notes||'')}</textarea></label>
+          <label>Observações<textarea id="customerNotes" rows="4" placeholder="Ex.: prefere contato por WhatsApp, interesse em creatina, reativar no próximo mês…">${esc(customer.notes||'')}</textarea></label>
           <div class="customer-dialog-actions">
             <button id="customerSave" class="button" type="button">Salvar alterações</button>
           </div>
@@ -1617,33 +1629,36 @@
     }
   }
 
+
   async function renderCustomers() {
     $('#adminContent').innerHTML=`
       <div class="customer-page">
         <div class="customer-page-head">
           <div>
-            <p class="eyebrow">CRM / BASE DE CLIENTES</p>
+            <p class="eyebrow">CRM / RELACIONAMENTO</p>
             <h2>Clientes</h2>
-            <p class="muted">Clientes da loja online e contatos importados da Olist em uma única visão.</p>
+            <p class="muted">Foco em frequência, última compra e clientes que precisam de reativação — sem valores financeiros nesta área.</p>
           </div>
           <button id="customerImportOlist" class="button secondary" type="button">Importar clientes da Olist</button>
         </div>
 
         <div class="admin-cards customer-metrics" id="customerMetrics">
           <div class="admin-card"><span>Total de clientes</span><strong>—</strong></div>
-          <div class="admin-card"><span>Clientes compradores</span><strong>—</strong></div>
-          <div class="admin-card"><span>Faturamento pago</span><strong>—</strong></div>
-          <div class="admin-card"><span>Ticket médio</span><strong>—</strong></div>
+          <div class="admin-card"><span>Já compraram</span><strong>—</strong></div>
+          <div class="admin-card"><span>Ativos nos últimos 30 dias</span><strong>—</strong></div>
+          <div class="admin-card"><span>Precisam de reativação</span><strong>—</strong></div>
         </div>
 
         <div class="customer-toolbar">
           <input id="customerSearch" type="search" placeholder="Buscar nome, e-mail, telefone, CPF ou cidade">
           <select id="customerStatusFilter">
             <option value="">Todos os clientes</option>
-            <option value="active">Ativos</option>
-            <option value="inactive">Inativos</option>
-            <option value="buyers">Já compraram</option>
-            <option value="leads">Sem pedidos</option>
+            <option value="active30">Ativos — até 30 dias</option>
+            <option value="attention">Atenção — 31 a 60 dias</option>
+            <option value="risk">Em risco — 61 a 90 dias</option>
+            <option value="reactivate">Reativar — mais de 90 dias</option>
+            <option value="leads">Nunca compraram</option>
+            <option value="inactive">Conta inativa</option>
           </select>
           <select id="customerOriginFilter">
             <option value="">Todas as origens</option>
@@ -1651,9 +1666,10 @@
             <option value="store">Loja / cadastro</option>
           </select>
           <select id="customerSort">
-            <option value="recent">Mais recentes</option>
-            <option value="spent">Maior gasto</option>
-            <option value="orders">Mais pedidos</option>
+            <option value="inactive">Mais tempo sem comprar</option>
+            <option value="recentPurchase">Compra mais recente</option>
+            <option value="orders">Mais compras</option>
+            <option value="recent">Cadastro mais recente</option>
             <option value="name">Nome A–Z</option>
           </select>
         </div>
@@ -1671,26 +1687,31 @@
     const paintRows=()=>{
       const sort=$('#customerSort').value;
       const rows=[...currentRows];
-      if(sort==='spent')rows.sort((a,b)=>Number(b.totalSpent||0)-Number(a.totalSpent||0));
-      else if(sort==='orders')rows.sort((a,b)=>Number(b.orderCount||0)-Number(a.orderCount||0));
+      if(sort==='inactive')rows.sort((a,b)=>{
+        const ad=a.daysSincePurchase===null||a.daysSincePurchase===undefined?999999:Number(a.daysSincePurchase);
+        const bd=b.daysSincePurchase===null||b.daysSincePurchase===undefined?999999:Number(b.daysSincePurchase);
+        return bd-ad;
+      });
+      else if(sort==='recentPurchase')rows.sort((a,b)=>String(b.lastPurchaseDate||'').localeCompare(String(a.lastPurchaseDate||'')));
+      else if(sort==='orders')rows.sort((a,b)=>Number(b.purchaseCount||0)-Number(a.purchaseCount||0));
       else if(sort==='name')rows.sort((a,b)=>String(a.full_name||'').localeCompare(String(b.full_name||''),'pt-BR'));
       else rows.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
 
       $('#customerRecords').innerHTML=rows.length?`
         <div class="table-wrap customer-table-wrap">
           <table class="customer-table">
-            <thead><tr><th>Cliente</th><th>Contato</th><th>Localização</th><th>Pedidos</th><th>Total gasto</th><th>Último pedido</th><th>Origem</th><th>Status</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Contato</th><th>Localização</th><th>Compras</th><th>Última compra</th><th>Tempo sem comprar</th><th>CRM</th><th>Origem</th></tr></thead>
             <tbody>
               ${rows.map(row=>`
                 <tr data-customer-id="${esc(row.id)}">
                   <td><div class="customer-name-cell"><span class="customer-avatar">${esc((row.full_name||'?').trim().slice(0,1).toUpperCase())}</span><div><strong>${esc(row.full_name||'Sem nome')}</strong><small>${esc(maskCpf(row.cpf))}</small></div></div></td>
                   <td><strong>${esc(row.email||'—')}</strong><br><small>${esc(row.phone||'—')}</small></td>
                   <td>${row.address?esc([row.address.city,row.address.state].filter(Boolean).join(' / ')):'—'}<br><small>${esc(row.address?.neighborhood||'')}</small></td>
-                  <td><strong>${Number(row.orderCount||0)}</strong><br><small>${Number(row.paidOrderCount||0)} pagos</small></td>
-                  <td><strong>${dbMoney(row.totalSpent)}</strong></td>
-                  <td>${row.lastOrder?customerDate(row.lastOrder.date):'—'}<br><small>${row.lastOrder?esc(row.lastOrder.number||''):''}</small></td>
+                  <td><strong>${Number(row.purchaseCount||0)}</strong><br><small>${Number(row.orderCount||0)} pedidos totais</small></td>
+                  <td><strong>${row.lastPurchaseDate?customerDate(row.lastPurchaseDate):'Nunca comprou'}</strong></td>
+                  <td><strong>${customerRecencyText(row.daysSincePurchase,row.purchaseCount)}</strong></td>
+                  <td><span class="crm-badge ${customerCrmClass(row.crmStatus)}">${esc(row.crmLabel||'Nunca comprou')}</span></td>
                   <td><span class="customer-origin ${row.source_provider==='olist_erp'?'olist':'store'}">${customerOrigin(row)}</span></td>
-                  <td><span class="badge">${row.active===false?'Inativo':'Ativo'}</span></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1724,10 +1745,10 @@
         const metrics=payload.metrics||{};
 
         $('#customerMetrics').innerHTML=`
-          <div class="admin-card"><span>Total de clientes</span><strong>${Number(metrics.total||0)}</strong><small>${Number(metrics.active||0)} ativos</small></div>
-          <div class="admin-card"><span>Clientes compradores</span><strong>${Number(metrics.buyers||0)}</strong><small>${Number(metrics.leads||0)} sem pedidos</small></div>
-          <div class="admin-card"><span>Faturamento pago</span><strong>${dbMoney(metrics.totalSpent)}</strong><small>${Number(metrics.paidOrders||0)} pedidos pagos</small></div>
-          <div class="admin-card"><span>Ticket médio</span><strong>${dbMoney(metrics.averageTicket)}</strong><small>por pedido pago</small></div>
+          <div class="admin-card"><span>Total de clientes</span><strong>${Number(metrics.total||0)}</strong><small>${Number(metrics.leads||0)} nunca compraram</small></div>
+          <div class="admin-card"><span>Já compraram</span><strong>${Number(metrics.buyers||0)}</strong><small>clientes com compra paga</small></div>
+          <div class="admin-card"><span>Ativos nos últimos 30 dias</span><strong>${Number(metrics.active30||0)}</strong><small>${Number(metrics.attention||0)} em atenção</small></div>
+          <div class="admin-card"><span>Precisam de reativação</span><strong>${Number(metrics.reactivate||0)}</strong><small>${Number(metrics.risk||0)} em risco</small></div>
         `;
         paintRows();
       }catch(error){

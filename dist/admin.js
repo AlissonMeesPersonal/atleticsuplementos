@@ -90,6 +90,8 @@
   let barcodeDecodeRequestBusy = false;
   let barcodeQuaggaBusy = false;
   let barcodeFrameCounter = 0;
+  let barcodeZxingReader = null;
+  let barcodeZxingControls = null;
   let barcodeCurrentCode = '';
   let barcodeCurrentProduct = null;
 
@@ -288,6 +290,10 @@
     $('#barcodeReadNow').onclick=async()=>{
       const video=$('#barcodeVideo');
       const status=$('#barcodeStatus');
+      if(!isMobileLike()&&barcodeZxingReader){
+        status.textContent='Leitura contínua ZXing já está ativa. Centralize o código de barras na câmera.';
+        return;
+      }
       if(!barcodeStream||!video?.videoWidth){
         status.textContent='Ative a câmera primeiro.';
         return;
@@ -440,6 +446,7 @@
     }
 
     await refreshBarcodeCameras();
+    if(!isMobileLike())loadZxingBrowserLibrary().catch(()=>{});
 
     showBarcodePermission({
       state:'prompt',
@@ -515,6 +522,44 @@
     $('#barcodeCameraPanel').hidden=false;
     $('#barcodeResult').hidden=true;
     $('#barcodeStatus').textContent='';
+
+    if(!isMobileLike()){
+      const permissionBox=$('#barcodePermission');
+      try{
+        // Primeiro pede a permissão de webcam com um gesto do usuário.
+        const permissionStream=await openCameraStream(deviceId);
+        const activeTrack=permissionStream.getVideoTracks?.()[0]||null;
+        const activeDeviceId=activeTrack?.getSettings?.().deviceId||deviceId||'';
+        permissionStream.getTracks().forEach(track=>track.stop());
+
+        permissionBox.hidden=true;
+        await refreshBarcodeCameras();
+
+        const chosen=activeDeviceId||deviceId||barcodeSelectedDeviceId||'';
+        if(chosen){
+          barcodeSelectedDeviceId=chosen;
+          barcodeManualDeviceSelection=true;
+          if($('#barcodeCameraSelect')&&barcodeCameras.some(camera=>camera.deviceId===chosen)){
+            $('#barcodeCameraSelect').value=chosen;
+          }
+        }
+
+        const zxingStarted=await startZxingBarcodeReader(chosen);
+        if(zxingStarted)return;
+      }catch(error){
+        const denied=error?.name==='NotAllowedError'||error?.name==='PermissionDeniedError';
+        showBarcodePermission({
+          state:denied?'denied':'error',
+          text:denied?'O navegador não recebeu permissão para usar a webcam.':'Não foi possível iniciar o leitor da webcam.',
+          help:denied
+            ?'Clique no ícone de câmera/cadeado ao lado do endereço do site, permita Câmera e recarregue.'
+            :(error?.message||'Tente selecionar outra webcam.'),
+          button:'Tentar novamente'
+        });
+        await refreshBarcodeCameras();
+        return;
+      }
+    }
 
     try{
       barcodeStream=await openCameraStream(deviceId);
@@ -600,6 +645,101 @@
         button:'Tentar novamente'
       });
       await refreshBarcodeCameras();
+    }
+  }
+
+  function loadZxingBrowserLibrary() {
+    if(window.ZXing?.BrowserMultiFormatReader)return Promise.resolve(window.ZXing);
+    if(window.__atleticZxingPromise)return window.__atleticZxingPromise;
+
+    window.__atleticZxingPromise=new Promise((resolve,reject)=>{
+      const existing=document.querySelector('script[data-atletic-zxing]');
+      if(existing){
+        if(window.ZXing?.BrowserMultiFormatReader)return resolve(window.ZXing);
+        existing.addEventListener('load',()=>window.ZXing?.BrowserMultiFormatReader?resolve(window.ZXing):reject(new Error('ZXing não carregou.')),{once:true});
+        existing.addEventListener('error',()=>reject(new Error('Falha ao carregar ZXing.')),{once:true});
+        return;
+      }
+
+      const script=document.createElement('script');
+      script.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+      script.async=true;
+      script.dataset.atleticZxing='1';
+      script.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve(window.ZXing):reject(new Error('ZXing não carregou.'));
+      script.onerror=()=>reject(new Error('Falha ao carregar ZXing.'));
+      document.head.appendChild(script);
+    });
+
+    return window.__atleticZxingPromise;
+  }
+
+  async function stopZxingBarcodeReader() {
+    try{barcodeZxingControls?.stop?.()}catch{}
+    barcodeZxingControls=null;
+    try{barcodeZxingReader?.reset?.()}catch{}
+    barcodeZxingReader=null;
+  }
+
+  async function startZxingBarcodeReader(deviceId='') {
+    const video=$('#barcodeVideo');
+    const message=$('#barcodeCameraMessage');
+    if(!video)return false;
+
+    try{
+      const ZXing=await loadZxingBrowserLibrary();
+      await stopZxingBarcodeReader();
+
+      const hints=new Map();
+      if(ZXing.DecodeHintType&&ZXing.BarcodeFormat){
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[
+          ZXing.BarcodeFormat.EAN_13,
+          ZXing.BarcodeFormat.EAN_8,
+          ZXing.BarcodeFormat.UPC_A,
+          ZXing.BarcodeFormat.UPC_E,
+          ZXing.BarcodeFormat.CODE_128,
+          ZXing.BarcodeFormat.CODE_39,
+          ZXing.BarcodeFormat.ITF,
+          ZXing.BarcodeFormat.CODABAR
+        ]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
+      }
+
+      barcodeZxingReader=new ZXing.BrowserMultiFormatReader(hints,250);
+
+      // ZXing gerencia o stream no desktop, porque é mais confiável para leitura contínua.
+      await stopBarcodeCamera({keepZxing:true});
+
+      barcodeZxingControls=await barcodeZxingReader.decodeFromVideoDevice(
+        deviceId||undefined,
+        video,
+        async (result,error,controls)=>{
+          if(controls)barcodeZxingControls=controls;
+          if(!result)return;
+
+          const raw=String(result.getText?.()||result.text||'').trim();
+          if(!validScannedBarcode(raw))return;
+
+          const code=normalizeScannedBarcode(raw);
+          if(!code||code===barcodeCurrentCode)return;
+
+          barcodeCurrentCode=code;
+          if(message)message.textContent=`Código ${code} identificado. Buscando produto…`;
+          if(navigator.vibrate)navigator.vibrate?.([80,40,80]);
+
+          try{controls?.stop?.()}catch{}
+          await stopZxingBarcodeReader();
+          await lookupBarcodeStock(code);
+        }
+      );
+
+      barcodeStream=video.srcObject||barcodeStream;
+      message.hidden=false;
+      message.textContent='Leitor ZXing ativo — mantenha o código de barras centralizado.';
+      return true;
+    }catch(error){
+      try{await stopZxingBarcodeReader()}catch{}
+      $('#barcodeStatus').textContent=`Leitor principal: ${error?.message||'falha ao iniciar'}`;
+      return false;
     }
   }
 
@@ -780,21 +920,23 @@
     if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,isMobileLike()?420:500);
   }
 
-  async function stopBarcodeCamera() {
+  async function stopBarcodeCamera({keepZxing=false}={}) {
     clearTimeout(barcodeTimer);
     barcodeTimer=null;
     barcodeDecodeRequestBusy=false;
     barcodeQuaggaBusy=false;
     barcodeFrameCounter=0;
 
+    if(!keepZxing)await stopZxingBarcodeReader();
+
     if(barcodeStream){
-      barcodeStream.getTracks().forEach(track=>track.stop());
+      try{barcodeStream.getTracks().forEach(track=>track.stop())}catch{}
       barcodeStream=null;
     }
 
     const video=$('#barcodeVideo');
     const reader=$('#barcodeFallbackReader');
-    if(video){
+    if(video&&!keepZxing){
       try{video.pause()}catch{}
       video.srcObject=null;
       video.hidden=false;

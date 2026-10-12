@@ -182,22 +182,139 @@
     $('#setupNotice').innerHTML = `<div><strong>${remoteReady ? 'Backend configurado' : 'Arquitetura v2 ativa em modo demonstração'}</strong><p>${remoteReady ? 'O frontend já possui as chaves públicas do projeto. A próxima validação é Auth/RLS antes de gravar dados reais.' : 'Admin e vitrine compartilham a mesma base local neste navegador. O schema Supabase definitivo e a função protegida de busca de imagens já estão preparados para a conexão real.'}</p></div><span class="mode-pill">${remoteReady ? 'SUPABASE' : 'LOCAL / DEMO'}</span>`;
   }
 
-  function renderOverview() {
-    const stockUnits = data.variants.reduce((sum, variant) => sum + Math.max(0, balance(variant.id)), 0);
-    const low = data.variants.filter(v => v.active && balance(v.id) <= Number(v.minStock || 0)).length;
-    const activeProducts = data.products.filter(x => x.active).length;
-    const activeBanners = AtleticStore.activeBanners(data).length;
-    $('#adminContent').innerHTML = `
-      <div class="admin-cards">
-        <div class="admin-card"><span>Produtos ativos</span><strong>${activeProducts}</strong></div>
-        <div class="admin-card"><span>Unidades em estoque</span><strong>${stockUnits}</strong></div>
-        <div class="admin-card"><span>Estoque mínimo / alerta</span><strong>${low}</strong></div>
-        <div class="admin-card"><span>Banners ativos</span><strong>${activeBanners}</strong></div>
+  async function dashboardAdminRequest(period='month') {
+    const response=await fetch(`/api/admin-dashboard?period=${encodeURIComponent(period)}`,{
+      headers:{Authorization:`Bearer ${adminToken()}`}
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||'Não foi possível carregar os indicadores.');
+    return payload;
+  }
+
+  function dashboardBarHeight(value,max) {
+    if(!max||value<=0)return 4;
+    return Math.max(8,Math.round((Number(value)/max)*100));
+  }
+
+  async function renderOverview() {
+    $('#adminContent').innerHTML=`
+      <div class="management-dashboard">
+        <div class="management-head">
+          <div>
+            <p class="eyebrow">GESTÃO / FINANCEIRO</p>
+            <h2>Visão geral da operação</h2>
+            <p class="muted">Faturamento, custos, lucro, estoque e comportamento da base de clientes.</p>
+          </div>
+          <label class="management-period">Período
+            <select id="dashboardPeriod">
+              <option value="month">Este mês</option>
+              <option value="30d">Últimos 30 dias</option>
+              <option value="year">Este ano</option>
+              <option value="all">Todo o histórico</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="dashboardFinancialCards" class="finance-grid">
+          <div class="finance-card loading">Carregando indicadores…</div>
+        </div>
+
+        <div class="management-grid">
+          <section class="panel finance-chart-panel">
+            <div class="panel-title-row">
+              <div><p class="eyebrow">EVOLUÇÃO</p><h2>Últimos 6 meses</h2></div>
+              <div class="finance-legend"><span>Receita</span><span>Custo</span><span>Lucro</span></div>
+            </div>
+            <div id="dashboardChart" class="finance-chart"><div class="empty-panel">Carregando…</div></div>
+          </section>
+
+          <section class="panel">
+            <p class="eyebrow">OPERAÇÃO</p>
+            <h2>Saúde do negócio</h2>
+            <div id="dashboardOperation" class="operation-metrics"><div class="empty-panel">Carregando…</div></div>
+          </section>
+        </div>
+
+        <section class="panel management-note">
+          <div>
+            <p class="eyebrow">LEITURA DOS NÚMEROS</p>
+            <h2>Como os custos são calculados</h2>
+            <p class="muted">O lucro bruto considera a receita dos produtos menos o custo registrado em cada item vendido. Frete, impostos, taxas de pagamento e despesas fixas ainda não entram nesse cálculo; eles poderão compor um DRE completo depois.</p>
+          </div>
+          <div id="dashboardCostCoverage" class="status-row"></div>
+        </section>
       </div>
-      <div class="admin-grid">
-        <section class="panel"><h2>Operação preparada</h2><ul><li>Produtos separados de variações, marcas e categorias.</li><li>Preço normal, preço promocional, custo, SKU e estoque mínimo por variação.</li><li>Histórico de entradas e saídas preservado como movimentos.</li><li>Banners e parceiros com agendamento, imagens e WhatsApp.</li><li>Clientes, pedidos e pagamentos previstos no schema para o backend real.</li></ul></section>
-        <section class="panel"><h2>Próximas ativações</h2><p class="muted">Conectar projeto Supabase exclusivo, aplicar schema, criar o primeiro administrador e configurar a chave da busca de imagens na Vercel.</p><div class="status-row"><span class="status-chip">GitHub ✓</span><span class="status-chip">Vercel ✓</span><span class="status-chip">Supabase preparado</span><span class="status-chip">Checkout pendente</span></div></section>
-      </div>`;
+    `;
+
+    const period=$('#dashboardPeriod');
+    period.onchange=()=>loadDashboardIndicators(period.value);
+
+    async function loadDashboardIndicators(selectedPeriod) {
+      const cards=$('#dashboardFinancialCards');
+      const chart=$('#dashboardChart');
+      const operation=$('#dashboardOperation');
+      const coverage=$('#dashboardCostCoverage');
+
+      cards.innerHTML='<div class="finance-card loading">Carregando indicadores…</div>';
+      chart.innerHTML='<div class="empty-panel">Carregando…</div>';
+      operation.innerHTML='<div class="empty-panel">Carregando…</div>';
+
+      try{
+        const payload=await dashboardAdminRequest(selectedPeriod);
+        const financial=payload.financial||{};
+        const inventory=payload.inventory||{};
+        const customers=payload.customers||{};
+        const monthly=payload.monthly||[];
+
+        cards.innerHTML=`
+          <article class="finance-card primary"><span>Faturamento</span><strong>${dbMoney(financial.revenue)}</strong><small>${Number(financial.paidOrders||0)} pedidos pagos</small></article>
+          <article class="finance-card"><span>Custo das mercadorias</span><strong>${dbMoney(financial.cost)}</strong><small>custo dos itens vendidos</small></article>
+          <article class="finance-card profit"><span>Lucro bruto</span><strong>${dbMoney(financial.grossProfit)}</strong><small>antes de taxas e despesas</small></article>
+          <article class="finance-card"><span>Margem bruta</span><strong>${Number(financial.grossMargin||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}%</strong><small>sobre receita de produtos</small></article>
+          <article class="finance-card compact"><span>Ticket médio</span><strong>${dbMoney(financial.averageTicket)}</strong></article>
+          <article class="finance-card compact"><span>Estoque a custo</span><strong>${dbMoney(inventory.costValue)}</strong></article>
+          <article class="finance-card compact"><span>Estoque a preço de venda</span><strong>${dbMoney(inventory.retailValue)}</strong></article>
+          <article class="finance-card compact"><span>Potencial bruto do estoque</span><strong>${dbMoney(inventory.potentialGrossProfit)}</strong></article>
+        `;
+
+        const max=Math.max(1,...monthly.flatMap(item=>[Number(item.productRevenue||0),Number(item.cost||0),Number(item.profit||0)]));
+        chart.innerHTML=monthly.length?`
+          <div class="finance-bars">
+            ${monthly.map(item=>`
+              <div class="finance-month">
+                <div class="finance-columns">
+                  <i class="revenue" style="height:${dashboardBarHeight(item.productRevenue,max)}%" title="Receita ${dbMoney(item.productRevenue)}"></i>
+                  <i class="cost" style="height:${dashboardBarHeight(item.cost,max)}%" title="Custo ${dbMoney(item.cost)}"></i>
+                  <i class="profit" style="height:${dashboardBarHeight(Math.max(0,item.profit),max)}%" title="Lucro ${dbMoney(item.profit)}"></i>
+                </div>
+                <strong>${esc(item.label)}</strong>
+                <small>${Number(item.orders||0)} pedidos</small>
+              </div>
+            `).join('')}
+          </div>
+        `:'<div class="empty-panel">Sem histórico financeiro ainda.</div>';
+
+        operation.innerHTML=`
+          <div><span>Unidades em estoque</span><strong>${Number(inventory.units||0)}</strong></div>
+          <div><span>Itens em estoque mínimo</span><strong>${Number(inventory.lowStock||0)}</strong></div>
+          <div><span>Clientes cadastrados</span><strong>${Number(customers.total||0)}</strong></div>
+          <div><span>Clientes há +60 dias sem comprar</span><strong>${Number(customers.inactive60||0)}</strong></div>
+        `;
+
+        const coverageValue=Number(financial.costCoverage||0);
+        coverage.innerHTML=`
+          <span class="status-chip ${coverageValue<100?'warning':''}">Cobertura de custo: ${coverageValue.toLocaleString('pt-BR',{maximumFractionDigits:1})}%</span>
+          ${coverageValue<100?'<span class="status-chip warning">Existem itens vendidos sem custo cadastrado</span>':'<span class="status-chip">Custos completos ✓</span>'}
+        `;
+      }catch(error){
+        cards.innerHTML=`<div class="empty-panel finance-error"><h2>Indicadores indisponíveis</h2><p>${esc(error.message)}</p></div>`;
+        chart.innerHTML='<div class="empty-panel">Sem dados para exibir.</div>';
+        operation.innerHTML='<div class="empty-panel">Sem dados para exibir.</div>';
+        coverage.innerHTML='';
+      }
+    }
+
+    await loadDashboardIndicators('month');
   }
 
   function dbMoney(value) {

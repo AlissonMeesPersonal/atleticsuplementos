@@ -748,6 +748,8 @@ td button{
 .management-head .muted{max-width:720px}
 .finance-grid{gap:11px}
 .finance-card{
+  position:relative;
+  overflow:hidden;
   min-height:122px;
   border-radius:15px;
   padding:18px;

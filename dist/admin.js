@@ -85,6 +85,8 @@
   let barcodeDetector = null;
   let barcodeFallbackScanner = null;
   let barcodeFallbackMode = false;
+  let barcodeCameras = [];
+  let barcodeSelectedDeviceId = '';
   let barcodeBusy = false;
   let barcodeCurrentCode = '';
   let barcodeCurrentProduct = null;
@@ -251,7 +253,13 @@
               </div>
               <div id="barcodeCameraMessage" class="barcode-camera-message" hidden></div>
             </div>
-            <p class="barcode-tip">Aponte a câmera traseira para o EAN/GTIN do produto. O sistema busca primeiro no Supabase/Olist e depois nos cadastros locais.</p>
+            <div id="barcodeCameraControls" class="barcode-camera-controls" hidden>
+              <label>Câmera
+                <select id="barcodeCameraSelect"></select>
+              </label>
+              <button id="barcodeRefreshCameras" class="button secondary" type="button">Atualizar câmeras</button>
+            </div>
+            <p class="barcode-tip">Aponte a câmera para o EAN/GTIN do produto. Você pode escolher webcam, câmera frontal ou traseira.</p>
           </div>
 
           <form id="barcodeManualForm" class="barcode-manual-form">
@@ -271,6 +279,11 @@
 
     $('#barcodeClose').onclick=closeBarcodeScanner;
     $('#barcodeEnableCamera').onclick=requestBarcodeCamera;
+    $('#barcodeRefreshCameras').onclick=async()=>{await refreshBarcodeCameras(true)};
+    $('#barcodeCameraSelect').onchange=async event=>{
+      barcodeSelectedDeviceId=event.target.value||'';
+      await startBarcodeCamera(barcodeSelectedDeviceId);
+    };
     $('#barcodeScanner').addEventListener('close',stopBarcodeCamera);
     $('#barcodeScanner').addEventListener('click',event=>{if(event.target===$('#barcodeScanner'))closeBarcodeScanner()});
     $('#barcodeManualForm').onsubmit=event=>{
@@ -313,6 +326,60 @@
     }
   }
 
+  async function refreshBarcodeCameras(forceLabelRefresh=false) {
+    const controls=$('#barcodeCameraControls');
+    const select=$('#barcodeCameraSelect');
+    if(!navigator.mediaDevices?.enumerateDevices||!select)return [];
+
+    let devices=[];
+    try{
+      devices=(await navigator.mediaDevices.enumerateDevices()).filter(device=>device.kind==='videoinput');
+    }catch{
+      devices=[];
+    }
+
+    // Some browsers hide labels until camera permission is granted.
+    if(forceLabelRefresh&&devices.some(device=>!device.label)&&navigator.mediaDevices?.getUserMedia){
+      let probe=null;
+      try{
+        probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      }catch{}
+      if(probe)probe.getTracks().forEach(track=>track.stop());
+      try{
+        devices=(await navigator.mediaDevices.enumerateDevices()).filter(device=>device.kind==='videoinput');
+      }catch{}
+    }
+
+    barcodeCameras=devices;
+    controls.hidden=!devices.length;
+
+    const previous=barcodeSelectedDeviceId||select.value;
+    select.innerHTML=devices.map((device,index)=>{
+      const label=device.label||`Câmera ${index+1}`;
+      return `<option value="${esc(device.deviceId)}">${esc(label)}</option>`;
+    }).join('');
+
+    if(devices.length){
+      let preferred=devices.find(device=>device.deviceId===previous);
+      if(!preferred){
+        preferred=devices.find(device=>/back|rear|environment|traseira/i.test(device.label))
+          ||devices.find(device=>!/front|user|frontal/i.test(device.label))
+          ||devices[0];
+      }
+      barcodeSelectedDeviceId=preferred?.deviceId||devices[0].deviceId;
+      select.value=barcodeSelectedDeviceId;
+    }else{
+      barcodeSelectedDeviceId='';
+    }
+
+    return devices;
+  }
+
+  async function getPreferredBarcodeDeviceId(forceRefresh=false) {
+    const devices=await refreshBarcodeCameras(forceRefresh);
+    return barcodeSelectedDeviceId||devices[0]?.deviceId||'';
+  }
+
   async function prepareBarcodeCamera() {
     await stopBarcodeCamera();
     $('#barcodeCameraPanel').hidden=false;
@@ -333,7 +400,8 @@
 
     const state=await barcodeCameraPermissionState();
     if(state==='granted'){
-      await startBarcodeCamera();
+      await refreshBarcodeCameras(true);
+      await startBarcodeCamera(barcodeSelectedDeviceId);
       return;
     }
     if(state==='denied'){
@@ -352,7 +420,24 @@
     const button=$('#barcodeEnableCamera');
     button.disabled=true;
     button.textContent='Aguardando permissão…';
-    await startBarcodeCamera();
+
+    let probe=null;
+    try{
+      probe=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      if(probe)probe.getTracks().forEach(track=>track.stop());
+      await refreshBarcodeCameras(true);
+      await startBarcodeCamera(barcodeSelectedDeviceId);
+    }catch(error){
+      if(probe)probe.getTracks().forEach(track=>track.stop());
+      showBarcodePermission({
+        state:'denied',
+        text:error?.name==='NotAllowedError'?'O navegador não recebeu permissão para usar a câmera.':'Não foi possível acessar nenhuma câmera.',
+        help:error?.name==='NotAllowedError'
+          ?'Libere a câmera nas permissões deste site e tente novamente.'
+          :(error?.message||'Verifique se a câmera está conectada e não está sendo usada por outro aplicativo.'),
+        button:'Tentar novamente'
+      });
+    }
   }
 
   function loadHtml5QrcodeLibrary() {
@@ -377,7 +462,7 @@
     return window.__atleticHtml5QrcodePromise;
   }
 
-  async function startFallbackBarcodeScanner() {
+  async function startFallbackBarcodeScanner(deviceId='') {
     const message=$('#barcodeCameraMessage');
     const nativeVideo=$('#barcodeVideo');
     const reader=$('#barcodeFallbackReader');
@@ -423,8 +508,12 @@
         experimentalFeatures:{useBarCodeDetectorIfSupported:true}
       };
 
+      const cameraConfig=deviceId
+        ? {deviceId:{exact:deviceId}}
+        : {facingMode:{ideal:'environment'}};
+
       await barcodeFallbackScanner.start(
-        {facingMode:{ideal:'environment'}},
+        cameraConfig,
         config,
         async decodedText=>{
           const code=String(decodedText||'').trim();
@@ -449,7 +538,7 @@
     }
   }
 
-  async function startBarcodeCamera() {
+  async function startBarcodeCamera(deviceId='') {
     await stopBarcodeCamera();
     const message=$('#barcodeCameraMessage');
     const video=$('#barcodeVideo');
@@ -471,16 +560,18 @@
 
     try{
       // Esta chamada é o que dispara a solicitação nativa de permissão do navegador.
+      const videoConstraints=deviceId
+        ? {deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}}
+        : {facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}};
+
       barcodeStream=await navigator.mediaDevices.getUserMedia({
-        video:{
-          facingMode:{ideal:'environment'},
-          width:{ideal:1280},
-          height:{ideal:720}
-        },
+        video:videoConstraints,
         audio:false
       });
 
       permissionBox.hidden=true;
+      await refreshBarcodeCameras(false);
+      if($('#barcodeCameraControls'))$('#barcodeCameraControls').hidden=!barcodeCameras.length;
       video.srcObject=barcodeStream;
       video.setAttribute('playsinline','');
       video.setAttribute('webkit-playsinline','');
@@ -491,7 +582,7 @@
 
       if(!('BarcodeDetector' in window)){
         message.textContent='Câmera autorizada. Iniciando leitor compatível…';
-        await startFallbackBarcodeScanner();
+        await startFallbackBarcodeScanner(deviceId||barcodeSelectedDeviceId);
         return;
       }
 
@@ -505,7 +596,7 @@
         barcodeScanFrame();
       }catch{
         message.textContent='Iniciando leitor compatível…';
-        await startFallbackBarcodeScanner();
+        await startFallbackBarcodeScanner(deviceId||barcodeSelectedDeviceId);
       }
     }catch(error){
       stopBarcodeCamera();
@@ -520,7 +611,22 @@
         showBarcodePermission({
           state:'unavailable',
           text:'Nenhuma câmera foi encontrada neste dispositivo.',
-          help:'Você pode digitar o código de barras manualmente abaixo.',
+          help:'Conecte uma webcam ou use a câmera do celular. Você também pode digitar o código manualmente.',
+          button:'Tentar novamente'
+        });
+      }else if(error?.name==='NotReadableError'||error?.name==='TrackStartError'){
+        showBarcodePermission({
+          state:'error',
+          text:'A câmera foi encontrada, mas está ocupada.',
+          help:'Feche outros aplicativos que estejam usando a câmera (WhatsApp, Meet, Zoom, Teams ou outro navegador) e tente novamente.',
+          button:'Tentar novamente'
+        });
+      }else if(error?.name==='OverconstrainedError'||error?.name==='ConstraintNotSatisfiedError'){
+        barcodeSelectedDeviceId='';
+        showBarcodePermission({
+          state:'error',
+          text:'A câmera selecionada não pôde ser iniciada.',
+          help:'Toque em “Tentar novamente” para o sistema escolher outra câmera disponível.',
           button:'Tentar novamente'
         });
       }else{
@@ -651,7 +757,7 @@
     qty.oninput=updateProjection;
     $('#barcodeQtyMinus').onclick=()=>{qty.value=Math.max(1,Number(qty.value||1)-1);updateProjection()};
     $('#barcodeQtyPlus').onclick=()=>{qty.value=Number(qty.value||1)+1;updateProjection()};
-    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;prepareBarcodeCamera()};
+    $('#barcodeScanAnother').onclick=()=>{barcodeCurrentCode='';barcodeCurrentProduct=null;startBarcodeCamera(barcodeSelectedDeviceId)};
     $('#barcodeReceive').onclick=receiveBarcodeStock;
     setTimeout(()=>qty.focus(),80);
   }

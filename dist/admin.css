@@ -275,3 +275,10 @@
   .barcode-camera-controls{grid-template-columns:1fr}
   .barcode-camera-controls .button{width:100%}
 }
+
+.barcode-camera-controls select option{background:var(--card);color:var(--text)}
+@media(max-width:620px){
+  .barcode-camera-controls{position:relative;z-index:8;background:var(--bg)}
+  .barcode-camera-controls label{font-size:11px}
+  .barcode-camera-controls select{font-size:12px}
+}

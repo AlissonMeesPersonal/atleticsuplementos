@@ -290,10 +290,6 @@
     $('#barcodeReadNow').onclick=async()=>{
       const video=$('#barcodeVideo');
       const status=$('#barcodeStatus');
-      if(!isMobileLike()&&barcodeZxingReader){
-        status.textContent='Leitura contínua ZXing já está ativa. Centralize o código de barras na câmera.';
-        return;
-      }
       if(!barcodeStream||!video?.videoWidth){
         status.textContent='Ative a câmera primeiro.';
         return;
@@ -311,10 +307,6 @@
           }catch{}
         }
         if(!code){
-          const decoded=await decodeBarcodeFrameWithQuagga(video);
-          if(validScannedBarcode(decoded))code=normalizeScannedBarcode(decoded);
-        }
-        if(!code){
           const decoded=await decodeBarcodeFrameOnServer(video);
           if(validScannedBarcode(decoded))code=normalizeScannedBarcode(decoded);
         }
@@ -323,7 +315,7 @@
           await stopBarcodeCamera();
           await lookupBarcodeStock(code);
         }else{
-          status.textContent='Ainda não consegui ler. Aproxime o código, evite reflexo e deixe as barras ocupando boa parte da marcação.';
+          status.textContent='Não consegui ler este frame. Deixe o código reto, bem iluminado e com as barras ocupando pelo menos metade da largura da câmera.';
         }
       }finally{
         button.disabled=false;
@@ -734,7 +726,12 @@
 
       barcodeStream=video.srcObject||barcodeStream;
       message.hidden=false;
-      message.textContent='Leitor ZXing ativo — mantenha o código de barras centralizado.';
+      message.textContent='Leitores ativos — mantenha o código de barras centralizado.';
+      barcodeFrameCounter=0;
+      barcodeBusy=false;
+      barcodeDecodeRequestBusy=false;
+      clearTimeout(barcodeTimer);
+      barcodeTimer=setTimeout(barcodeScanFrame,350);
       return true;
     }catch(error){
       try{await stopZxingBarcodeReader()}catch{}
@@ -839,13 +836,13 @@
   function barcodeFrameData(video) {
     if(!video||video.readyState<2||!video.videoWidth||!video.videoHeight)return '';
     const canvas=document.createElement('canvas');
-    const maxWidth=720;
+    const maxWidth=1280;
     const scale=Math.min(1,maxWidth/video.videoWidth);
     canvas.width=Math.max(1,Math.round(video.videoWidth*scale));
     canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
     const ctx=canvas.getContext('2d');
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    return canvas.toDataURL('image/jpeg',0.72);
+    return canvas.toDataURL('image/jpeg',0.88);
   }
 
   async function decodeBarcodeFrameOnServer(video) {
@@ -877,12 +874,12 @@
     let code='';
 
     try{
-      if(!barcodeBusy&&video?.readyState>=2){
+      if(!barcodeBusy&&video?.readyState>=2&&video.videoWidth>0){
         barcodeBusy=true;
         barcodeFrameCounter++;
 
-        if(message&&!message.hidden&&barcodeFrameCounter%4===1){
-          message.textContent='Lendo código de barras… mantenha o código dentro da marcação.';
+        if(message&&!message.hidden&&barcodeFrameCounter%3===1){
+          message.textContent='Lendo código de barras… mantenha as barras ocupando boa parte da marcação.';
         }
 
         if(barcodeDetector){
@@ -893,13 +890,8 @@
           }catch{}
         }
 
-        if(!code){
-          const quaggaCode=await decodeBarcodeFrameWithQuagga(video);
-          if(validScannedBarcode(quaggaCode))code=normalizeScannedBarcode(quaggaCode);
-        }
-
-        // Servidor entra como último fallback e não precisa receber todos os frames.
-        if(!code&&barcodeFrameCounter%3===0){
+        // O servidor analisa diretamente frames da webcam e não depende de CDN.
+        if(!code&&barcodeFrameCounter%2===0){
           const serverCode=await decodeBarcodeFrameOnServer(video);
           if(validScannedBarcode(serverCode))code=normalizeScannedBarcode(serverCode);
         }
@@ -917,7 +909,7 @@
       barcodeBusy=false;
     }
 
-    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,isMobileLike()?420:500);
+    if(barcodeStream)barcodeTimer=setTimeout(barcodeScanFrame,isMobileLike()?500:650);
   }
 
   async function stopBarcodeCamera({keepZxing=false}={}) {

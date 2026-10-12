@@ -12,6 +12,10 @@ grant execute on function public.admin_lookup_barcode(text) to authenticated;
 grant execute on function public.admin_receive_inventory(uuid, integer, text) to authenticated;
 grant execute on function public.admin_set_inventory_after_erp(uuid, integer, integer, text) to authenticated;
 
+alter function public.admin_lookup_barcode(text) security invoker;
+alter function public.admin_receive_inventory(uuid, integer, text) security invoker;
+alter function public.admin_set_inventory_after_erp(uuid, integer, integer, text) security invoker;
+
 revoke all privileges on table public.admin_users from anon;
 revoke all privileges on table public.inventory from anon;
 revoke all privileges on table public.inventory_movements from anon;

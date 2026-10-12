@@ -19,7 +19,7 @@ async function validateAdmin(req){
   );
   if(!adminResponse.ok)return null;
   const admin=(await adminResponse.json())?.[0];
-  if(!admin||!['admin','manager','catalog'].includes(admin.role))return null;
+  if(!admin||!['admin','manager'].includes(admin.role))return null;
   return {admin,authorization,key,supabaseUrl};
 }
 

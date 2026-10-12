@@ -83,6 +83,8 @@
   let barcodeStream = null;
   let barcodeTimer = null;
   let barcodeDetector = null;
+  let barcodeFallbackScanner = null;
+  let barcodeFallbackMode = false;
   let barcodeBusy = false;
   let barcodeCurrentCode = '';
   let barcodeCurrentProduct = null;
@@ -238,6 +240,7 @@
           <div id="barcodeCameraPanel" class="barcode-camera-panel">
             <div class="barcode-video-wrap">
               <video id="barcodeVideo" playsinline webkit-playsinline autoplay muted></video>
+              <div id="barcodeFallbackReader" class="barcode-fallback-reader" hidden></div>
               <div class="barcode-target" aria-hidden="true"><span></span></div>
               <div id="barcodePermission" class="barcode-permission">
                 <div class="barcode-permission-icon">▦</div>
@@ -274,8 +277,7 @@
       event.preventDefault();
       const code=$('#barcodeManualCode').value.trim();
       if(!code)return;
-      stopBarcodeCamera();
-      lookupBarcodeStock(code);
+      stopBarcodeCamera().finally(()=>lookupBarcodeStock(code));
     };
   }
 
@@ -312,7 +314,7 @@
   }
 
   async function prepareBarcodeCamera() {
-    stopBarcodeCamera();
+    await stopBarcodeCamera();
     $('#barcodeCameraPanel').hidden=false;
     $('#barcodeResult').hidden=true;
     $('#barcodeStatus').textContent='';
@@ -353,8 +355,102 @@
     await startBarcodeCamera();
   }
 
+  function loadHtml5QrcodeLibrary() {
+    if(window.Html5Qrcode)return Promise.resolve(window.Html5Qrcode);
+    if(window.__atleticHtml5QrcodePromise)return window.__atleticHtml5QrcodePromise;
+
+    window.__atleticHtml5QrcodePromise=new Promise((resolve,reject)=>{
+      const existing=document.querySelector('script[data-atletic-html5-qrcode]');
+      if(existing){
+        existing.addEventListener('load',()=>window.Html5Qrcode?resolve(window.Html5Qrcode):reject(new Error('Leitor de código não carregou.')),{once:true});
+        existing.addEventListener('error',()=>reject(new Error('Falha ao carregar o leitor de código.')),{once:true});
+        return;
+      }
+      const script=document.createElement('script');
+      script.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+      script.async=true;
+      script.dataset.atleticHtml5Qrcode='1';
+      script.onload=()=>window.Html5Qrcode?resolve(window.Html5Qrcode):reject(new Error('Leitor de código não carregou.'));
+      script.onerror=()=>reject(new Error('Falha ao carregar o leitor de código.'));
+      document.head.appendChild(script);
+    });
+    return window.__atleticHtml5QrcodePromise;
+  }
+
+  async function startFallbackBarcodeScanner() {
+    const message=$('#barcodeCameraMessage');
+    const nativeVideo=$('#barcodeVideo');
+    const reader=$('#barcodeFallbackReader');
+
+    try{
+      // Evita manter duas capturas da câmera abertas ao mesmo tempo.
+      if(barcodeStream){
+        barcodeStream.getTracks().forEach(track=>track.stop());
+        barcodeStream=null;
+      }
+      if(nativeVideo)nativeVideo.srcObject=null;
+
+      await loadHtml5QrcodeLibrary();
+      reader.hidden=false;
+      nativeVideo.hidden=true;
+      barcodeFallbackMode=true;
+
+      if(barcodeFallbackScanner){
+        try{await barcodeFallbackScanner.stop()}catch{}
+        try{await barcodeFallbackScanner.clear()}catch{}
+      }
+
+      const formats=[
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.ITF
+      ].filter(Boolean);
+
+      barcodeFallbackScanner=new Html5Qrcode('barcodeFallbackReader',{formatsToSupport:formats,verbose:false});
+
+      const config={
+        fps:12,
+        qrbox:(viewfinderWidth,viewfinderHeight)=>({
+          width:Math.min(Math.round(viewfinderWidth*.88),520),
+          height:Math.min(Math.round(viewfinderHeight*.34),190)
+        }),
+        aspectRatio:1.3333333333,
+        disableFlip:false,
+        experimentalFeatures:{useBarCodeDetectorIfSupported:true}
+      };
+
+      await barcodeFallbackScanner.start(
+        {facingMode:{ideal:'environment'}},
+        config,
+        async decodedText=>{
+          const code=String(decodedText||'').trim();
+          if(!code||code===barcodeCurrentCode)return;
+          barcodeCurrentCode=code;
+          if(navigator.vibrate)navigator.vibrate(90);
+          await stopBarcodeCamera();
+          await lookupBarcodeStock(code);
+        },
+        ()=>{}
+      );
+
+      message.hidden=false;
+      message.textContent='Leitor compatível ativo — centralize o código de barras dentro da marcação.';
+    }catch(error){
+      barcodeFallbackMode=false;
+      if(reader)reader.hidden=true;
+      if(nativeVideo)nativeVideo.hidden=false;
+      message.hidden=false;
+      message.textContent='Não foi possível iniciar o leitor automático. Você ainda pode digitar o código abaixo.';
+      $('#barcodeStatus').textContent=error?.message||'Falha ao iniciar o leitor de código.';
+    }
+  }
+
   async function startBarcodeCamera() {
-    stopBarcodeCamera();
+    await stopBarcodeCamera();
     const message=$('#barcodeCameraMessage');
     const video=$('#barcodeVideo');
     const permissionBox=$('#barcodePermission');
@@ -394,18 +490,23 @@
       message.hidden=false;
 
       if(!('BarcodeDetector' in window)){
-        message.textContent='Câmera autorizada. Este navegador não possui leitura automática nativa; use o campo abaixo para informar o código.';
+        message.textContent='Câmera autorizada. Iniciando leitor compatível…';
+        await startFallbackBarcodeScanner();
         return;
       }
 
       const supported=BarcodeDetector.getSupportedFormats?await BarcodeDetector.getSupportedFormats():[];
       const preferred=['ean_13','ean_8','upc_a','upc_e','code_128'];
       const formats=supported.length?preferred.filter(format=>supported.includes(format)):preferred;
-      barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
-
-      message.textContent='Câmera ativa — centralize o código de barras dentro da marcação.';
-      barcodeBusy=false;
-      barcodeScanFrame();
+      try{
+        barcodeDetector=new BarcodeDetector(formats.length?{formats}:undefined);
+        message.textContent='Câmera ativa — centralize o código de barras dentro da marcação.';
+        barcodeBusy=false;
+        barcodeScanFrame();
+      }catch{
+        message.textContent='Iniciando leitor compatível…';
+        await startFallbackBarcodeScanner();
+      }
     }catch(error){
       stopBarcodeCamera();
       if(error?.name==='NotAllowedError'||error?.name==='PermissionDeniedError'){
@@ -457,21 +558,41 @@
     barcodeTimer=setTimeout(barcodeScanFrame,180);
   }
 
-  function stopBarcodeCamera() {
+  async function stopBarcodeCamera() {
     clearTimeout(barcodeTimer);
     barcodeTimer=null;
     if(barcodeStream){
       barcodeStream.getTracks().forEach(track=>track.stop());
       barcodeStream=null;
     }
+
+    if(barcodeFallbackScanner){
+      try{
+        const state=barcodeFallbackScanner.getState?.();
+        if(state===2||state===3)await barcodeFallbackScanner.stop();
+      }catch{}
+      try{await barcodeFallbackScanner.clear()}catch{}
+      barcodeFallbackScanner=null;
+    }
+
     const video=$('#barcodeVideo');
-    if(video)video.srcObject=null;
+    const reader=$('#barcodeFallbackReader');
+    if(video){
+      video.srcObject=null;
+      video.hidden=false;
+    }
+    if(reader){
+      reader.hidden=true;
+      reader.innerHTML='';
+    }
+
+    barcodeFallbackMode=false;
     barcodeDetector=null;
     barcodeBusy=false;
   }
 
-  function closeBarcodeScanner() {
-    stopBarcodeCamera();
+  async function closeBarcodeScanner() {
+    await stopBarcodeCamera();
     const dialog=$('#barcodeScanner');
     if(dialog?.open)dialog.close();
     document.body.style.overflow='';

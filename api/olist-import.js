@@ -465,9 +465,10 @@ async function importOrder(id,authorization){
   const itemRows=[];
   for(const item of items){
     const sku=clean(item.codigo);
-    const variant=sku?await first(`product_variants?sku=eq.${encodeURIComponent(sku)}&select=id,product_id,name&limit=1`,authorization):null;
+    const variant=sku?await first(`product_variants?sku=eq.${encodeURIComponent(sku)}&select=id,product_id,name,cost_price&limit=1`,authorization):null;
     const quantity=Math.max(1,Math.round(num(item.quantidade,1)));
     const unitPrice=Math.max(0,num(item.valor_unitario));
+    const unitCost=Math.max(0,num(variant?.cost_price));
     itemRows.push({
       order_id:saved.id,
       product_id:variant?.product_id||null,
@@ -478,6 +479,8 @@ async function importOrder(id,authorization){
       attributes:{olist:{externalProductId:item.id_produto?String(item.id_produto):null,additionalInfo:clean(item.info_adicional)||null}},
       quantity,
       unit_price:unitPrice,
+      unit_cost:unitCost,
+      cost_total:unitCost*quantity,
       discount_total:0,
       line_total:unitPrice*quantity
     });

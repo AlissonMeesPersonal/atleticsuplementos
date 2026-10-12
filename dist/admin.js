@@ -235,6 +235,23 @@
           </section>
         </div>
 
+        <section class="panel dashboard-actions-panel">
+          <div class="panel-title-row">
+            <div>
+              <p class="eyebrow">ATALHOS</p>
+              <h2>Ações rápidas</h2>
+            </div>
+            <span class="muted">Operações mais usadas no dia a dia</span>
+          </div>
+          <div class="dashboard-quick-actions">
+            <button type="button" data-dashboard-action="products"><span>＋</span><strong>Novo produto</strong><small>Cadastrar item</small></button>
+            <button type="button" data-dashboard-action="stock"><span>↕</span><strong>Entrada de estoque</strong><small>Movimentar saldo</small></button>
+            <button type="button" data-dashboard-action="customers"><span>◎</span><strong>CRM clientes</strong><small>Reativação e frequência</small></button>
+            <button type="button" data-dashboard-action="orders"><span>▤</span><strong>Pedidos</strong><small>Acompanhar vendas</small></button>
+            <button type="button" data-dashboard-action="integrations"><span>⇄</span><strong>Olist ERP</strong><small>Importar e sincronizar</small></button>
+          </div>
+        </section>
+
         <section class="panel management-note">
           <div>
             <p class="eyebrow">LEITURA DOS NÚMEROS</p>
@@ -248,6 +265,19 @@
 
     const period=$('#dashboardPeriod');
     period.onchange=()=>loadDashboardIndicators(period.value);
+
+    document.querySelectorAll('[data-dashboard-action]').forEach(button=>{
+      button.onclick=()=>{
+        const target=button.dataset.dashboardAction;
+        page=target;
+        render();
+        if(target==='products'){
+          setTimeout(()=>$('#newRecord')?.click(),80);
+        }else if(target==='stock'){
+          setTimeout(()=>$('#barcodeStockOpen')?.click(),80);
+        }
+      };
+    });
 
     async function loadDashboardIndicators(selectedPeriod) {
       const cards=$('#dashboardFinancialCards');
@@ -2984,7 +3014,18 @@
     applyTheme(next);
     notify(next==='dark'?'Modo escuro salvo como preferência.':'Modo claro salvo como preferência.');
   };
-  $('#adminNav').innerHTML=Object.entries(modules).map(([id,label])=>`<button data-page="${id}">${label}</button>`).join('');
+  const navGroups=[
+    {label:'Visão geral',items:['overview']},
+    {label:'Catálogo',items:['products','categories','brands','stock','showcase','images']},
+    {label:'Comercial',items:['customers','orders','coupons','banners']},
+    {label:'Sistema',items:['integrations','settings']}
+  ];
+  $('#adminNav').innerHTML=navGroups.map(group=>`
+    <div class="admin-nav-group">
+      <span class="admin-nav-label">${group.label}</span>
+      ${group.items.map(id=>`<button data-page="${id}"><span class="admin-nav-dot"></span><span>${modules[id]}</span><i>›</i></button>`).join('')}
+    </div>
+  `).join('');
   window.addEventListener('storage', event=>{if(event.key===AtleticStore.KEY)render();if(event.key===THEME_KEY)applyTheme(readTheme());});
   if (window.AtleticAdminAuth) {
     window.AtleticAdminAuth.guard(async () => {

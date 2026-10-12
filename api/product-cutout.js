@@ -1,6 +1,12 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import https from 'node:https';
 import sharp from 'sharp';
+
+const MAX_REMOTE_BYTES = 8 * 1024 * 1024;
+const MAX_REDIRECTS = 3;
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_INPUT_PIXELS = 25_000_000;
 
 function normalizeSource(value='') {
   try {
@@ -39,20 +45,107 @@ function isPublicIpv6(address) {
   return true;
 }
 
-async function isSafeRemote(url) {
+async function resolveSafeRemote(url) {
   const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return null;
 
-  if (net.isIP(host)) return net.isIP(host) === 4 ? isPublicIpv4(host) : isPublicIpv6(host);
+  if (net.isIP(host)) {
+    const family = net.isIP(host);
+    const safe = family === 4 ? isPublicIpv4(host) : isPublicIpv6(host);
+    return safe ? { address: host, family } : null;
+  }
 
   try {
-    const addresses = await dns.lookup(host, { all: true });
-    return addresses.length > 0 && addresses.every(({address,family}) =>
+    const addresses = await dns.lookup(host, { all: true, verbatim: true });
+    if (!addresses.length) return null;
+    const safe = addresses.filter(({address,family}) =>
       family === 4 ? isPublicIpv4(address) : isPublicIpv6(address)
     );
+    if (safe.length !== addresses.length) return null;
+    return safe[0] || null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function readLimitedResponse(response) {
+  return new Promise((resolve,reject)=>{
+    const length = Number(response.headers['content-length'] || 0);
+    if (length > MAX_REMOTE_BYTES) {
+      response.destroy();
+      reject(new Error('remote image too large'));
+      return;
+    }
+
+    const chunks = [];
+    let total = 0;
+    response.on('data',chunk=>{
+      total += chunk.length;
+      if (total > MAX_REMOTE_BYTES) {
+        response.destroy(new Error('remote image too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    response.on('end',()=>resolve(Buffer.concat(chunks,total)));
+    response.on('error',reject);
+  });
+}
+
+function requestPinned(url,addressInfo) {
+  return new Promise((resolve,reject)=>{
+    const request=https.get(url,{
+      headers:{
+        'User-Agent':'AtleticSuplementos/1.0',
+        'Accept':'image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8'
+      },
+      timeout:REQUEST_TIMEOUT_MS,
+      lookup:(_hostname,_options,callback)=>{
+        callback(null,addressInfo.address,addressInfo.family);
+      }
+    },resolve);
+
+    request.on('timeout',()=>request.destroy(new Error('remote image timeout')));
+    request.on('error',reject);
+  });
+}
+
+async function fetchSafeImage(initialUrl) {
+  let current = initialUrl;
+
+  for (let hop=0; hop<=MAX_REDIRECTS; hop++) {
+    const address = await resolveSafeRemote(current);
+    if (!address) throw new Error('unsafe remote image host');
+
+    const response = await requestPinned(current,address);
+    const status = Number(response.statusCode || 0);
+
+    if ([301,302,303,307,308].includes(status)) {
+      response.resume();
+      if (hop === MAX_REDIRECTS) throw new Error('too many redirects');
+      const location = response.headers.location;
+      if (!location) throw new Error('redirect without location');
+      const next = normalizeSource(new URL(location,current).toString());
+      if (!next) throw new Error('unsafe redirect target');
+      current = next;
+      continue;
+    }
+
+    if (status < 200 || status >= 300) {
+      response.resume();
+      throw new Error('remote image request failed');
+    }
+
+    const contentType=String(response.headers['content-type']||'').toLowerCase();
+    if (!contentType.startsWith('image/')) {
+      response.resume();
+      throw new Error('remote content is not an image');
+    }
+
+    return readLimitedResponse(response);
+  }
+
+  throw new Error('remote image unavailable');
 }
 
 function median(values) {
@@ -177,24 +270,22 @@ export default async function handler(req,res) {
   }
 
   const source=normalizeSource(String(req.query?.url||''));
-  if (!source || !(await isSafeRemote(source))) {
+  if (!source) {
     return res.status(400).send('Imagem não permitida.');
   }
 
   try {
-    const response=await fetch(source.href,{
-      headers:{'User-Agent':'AtleticSuplementos/1.0'},
-      redirect:'follow'
-    });
-    if (!response.ok) return res.status(502).send('Não foi possível carregar a imagem.');
+    const input=await fetchSafeImage(source);
+    const probe=sharp(input,{limitInputPixels:MAX_INPUT_PIXELS,failOn:'warning'});
+    const meta=await probe.metadata();
+    const width=Number(meta.width||0);
+    const height=Number(meta.height||0);
+    if (!width || !height || width*height > MAX_INPUT_PIXELS) {
+      return res.status(413).send('Imagem grande demais.');
+    }
 
-    const contentType=String(response.headers.get('content-type')||'');
-    if (!contentType.startsWith('image/')) return res.status(415).send('Arquivo inválido.');
-
-    const input=Buffer.from(await response.arrayBuffer());
-    const meta=await sharp(input).metadata();
-    const maxDimension=Math.max(meta.width||0,meta.height||0);
-    const base=sharp(input).rotate();
+    const maxDimension=Math.max(width,height);
+    const base=sharp(input,{limitInputPixels:MAX_INPUT_PIXELS,failOn:'warning'}).rotate();
     const prepared=maxDimension>1600
       ? base.resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
       : base;
@@ -212,7 +303,14 @@ export default async function handler(req,res) {
     res.setHeader('Content-Type','image/png');
     res.setHeader('Cache-Control','public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000');
     return res.status(200).send(output);
-  } catch {
+  } catch (error) {
+    const message=String(error?.message||'');
+    if (/too large|input image exceeds|large demais/i.test(message)) {
+      return res.status(413).send('Imagem grande demais.');
+    }
+    if (/unsafe|redirect|timeout|remote image|not an image|request failed/i.test(message)) {
+      return res.status(400).send('Imagem remota não permitida.');
+    }
     return res.status(500).send('Falha ao processar a imagem.');
   }
 }

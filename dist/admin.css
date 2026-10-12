@@ -1701,3 +1701,34 @@ td small,
   .dashboard-quick-actions strong{font-size:9px!important}
   .dashboard-quick-actions small{font-size:7px!important}
 }
+
+/* Remove qualquer halo/glow acidental do seletor de período */
+.management-period,
+.management-period::before,
+.management-period::after,
+.management-period select,
+.management-period select::before,
+.management-period select::after{
+  filter:none!important;
+  text-shadow:none!important;
+}
+.management-period::before,
+.management-period::after,
+.management-period select::before,
+.management-period select::after{
+  content:none!important;
+  display:none!important;
+}
+.management-period select{
+  box-shadow:none!important;
+  outline:none!important;
+}
+.management-period select:hover{
+  box-shadow:none!important;
+}
+.management-period select:focus,
+.management-period select:focus-visible{
+  outline:1px solid rgba(246,165,28,.65)!important;
+  outline-offset:1px!important;
+  box-shadow:none!important;
+}

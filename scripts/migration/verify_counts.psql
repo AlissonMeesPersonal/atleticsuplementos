@@ -1,0 +1,29 @@
+-- Supabase -> Neon: relatório de verificação de tabelas (psql)
+-- READ-ONLY. Pode ser executado na ORIGEM e no DESTINO após o deploy em Preview.
+-- Nunca coloque credenciais, dados de clientes ou dumps no GitHub.
+-- Execução no PowerShell:
+--   psql "$env:SUPABASE_DB_URL" -X -f scripts/migration/verify_counts.psql > source-counts.txt
+--   psql "$env:NEON_DB_URL_UNPOOLED" -X -f scripts/migration/verify_counts.psql > neon-counts.txt
+-- Compare os resultados; cada linha deve coincidir após congelar gravações e sincronizar.
+-- USE CONEXÕES SEM POOLING TRANSACIONAL.
+
+\set ON_ERROR_STOP on
+\echo '=== PostgreSQL versão ==='
+SELECT current_setting('server_version') AS postgres_version;
+\echo '=== Contagens EXATAS de linhas por tabela em public ==='
+SELECT format('SELECT %L AS tabela, count(*)::bigint AS linhas FROM %I.%I;', n.nspname || '.' || c.relname, n.nspname, c.relname)
+FROM pg_class c
+JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public'
+  AND c.relkind='r'
+ORDER BY c.relname
+\gexec
+\echo '=== Extensões instaladas ==='
+SELECT extname, extversion FROM pg_extension ORDER BY extname;
+\echo '=== Políticas por tabela (não implica equivalência semântica) ==='
+SELECT schemaname || '.' || tablename AS tabela, count(*) AS politicas
+FROM pg_policies
+WHERE schemaname='public'
+GROUP BY schemaname, tablename
+ORDER BY tabela;
+\echo '=== Atenção: este relatório NÃO verifica permissões, Auth, Storage, jobs, FK, MFA, sessões nem objetos privados. ==='

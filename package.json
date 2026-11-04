@@ -4,6 +4,7 @@
   "dependencies": {
     "sharp": "^0.34.4",
     "archiver": "^7.0.1",
-    "@zxing/library": "^0.21.3"
+    "@zxing/library": "^0.21.3",
+    "@neondatabase/serverless": "1.2.0"
   }
 }

@@ -42,23 +42,16 @@
     <button type="submit">Salvar nova senha</button>
   </form>
   <button id="neonLogout" class="secondary" type="button" hidden>Sair</button>
-  <section id="neonDataTests" hidden aria-label="Verificações da migração Neon">
-    <h2 style="font-size:18px;margin:24px 0 10px">Banco Neon · testes de homologação</h2>
-    <p>Os testes são isolados da produção e não criam pedidos reais.</p>
-    <button id="neonReadData" class="secondary" type="button">Consultar tabelas Neon</button>
-    <button id="neonSmokeTest" class="secondary" type="button">Testar cadastro, estoque e pedido (reverter)</button>
-    <pre id="neonTestOutput" role="status" style="white-space:pre-wrap;font-size:12px;color:#ade0a5;margin-top:14px"></pre>
-  </section>
-  <p id="neonStatus" role="status" aria-live="polite">Verificando sessão...</p>
-  <section id="neonBusinessChecks" hidden aria-label="Verificação dos módulos Neon" style="margin-top:24px;padding-top:20px;border-top:1px solid #555">
-    <h2 style="font-size:18px">Módulos Neon — homologação</h2>
-    <p>Consulta de catálogo e inventário no banco Neon. O teste de escrita cria e desfaz registros dentro da mesma transação, sem persistir produtos nem pedidos.</p>
+  <section id="neonDataTests" hidden aria-label="Verificações da migração Neon" style="margin-top:24px;border-top:1px solid #555;padding-top:20px">
+    <h2 style="font-size:18px;margin:0 0 10px">Operações no Neon · homologação</h2>
+    <p>Consultas ao banco novo e simulação segura de cadastros, estoque e pedidos. A simulação é revertida na mesma transação e não registra pagamentos reais.</p>
+    <button id="neonReadData" class="secondary" type="button">Resumo do banco</button>
     <button id="neonCatalogBtn" class="secondary" type="button">Consultar catálogo</button>
-    <button id="neonSummaryBtn" class="secondary" type="button">Resumo do banco</button>
     <button id="neonInventoryBtn" class="secondary" type="button">Consultar estoque</button>
     <button id="neonOrdersBtn" class="secondary" type="button">Consultar pedidos</button>
-    <button id="neonSmokeBtn" type="button">Testar cadastro, estoque e pedido (desfazer)</button>
-    <pre id="neonBusinessResult" role="status" aria-live="polite" style="margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5;background:#121212;border:1px solid #444;padding:12px;border-radius:8px;min-height:32px">Nenhuma operação executada.</pre>
-    <p style="font-size:12px">Sem pagamentos, integrações externas ou alterações no Supabase. A vitrine e o painel comercial antigos ainda precisam ser migrados.</p>
+    <button id="neonSmokeTest" type="button">Testar cadastros, estoque e pedido (reverter)</button>
+    <pre id="neonTestOutput" role="status" aria-live="polite" style="margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5;background:#121212;border:1px solid #444;padding:12px;border-radius:8px;min-height:32px">Nenhuma operação executada.</pre>
+    <p style="font-size:12px">A loja atual ainda usa armazenamento local para o catálogo e Supabase nas contas/APIs antigas. Os testes aqui não substituem a validação completa do checkout.</p>
   </section>
+  <p id="neonStatus" role="status" aria-live="polite">Verificando sessão...</p>
 </main><script defer src="/neon-ui-health.js"></script><script defer src="/neon-admin-test.js"></script></body></html>

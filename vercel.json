@@ -2,6 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/neon-admin-test",
+      "destination": "/dist/neon-admin-test.html"
+    },
+    {
+      "source": "/neon-admin-test.js",
+      "destination": "/dist/neon-admin-test.js"
+    },
+    {
       "source": "/",
       "destination": "/dist/index.html"
     },
@@ -130,6 +138,20 @@
           "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
+    },
+    {
+      "source": "/neon-admin-test",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
     }
-  ]
+  ],
+  "buildCommand": "npm run build"
 }

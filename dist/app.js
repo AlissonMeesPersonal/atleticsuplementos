@@ -367,5 +367,25 @@
 
   renderCategories();renderProducts();renderCart();
   loadSiteVisuals();
+  if (AtleticStore.neonPreview) {
+    const strip=document.createElement('div');
+    strip.id='neonPreviewNotice';
+    strip.setAttribute('role','status');
+    strip.style.cssText='position:relative;z-index:1000;padding:12px 18px;background:#ef7b25;color:#151515;text-align:center;font:600 13px/1.5 system-ui,sans-serif';
+    strip.textContent='HOMOLOGAÇÃO NEON: carregando catálogo do novo banco. Checkout e pagamentos reais permanecem desativados.';
+    document.body.prepend(strip);
+    window.addEventListener('atletic:store-changed', event => {
+      if (event.detail?.source !== 'neon_preview') return;
+      products=AtleticStore.catalog();
+      renderCategories();renderProducts();renderCart();
+      const status=AtleticStore.neonStatus();
+      strip.textContent=status==='ready'
+        ? 'HOMOLOGAÇÃO NEON: '+products.length+' variações ativas carregadas do banco. Não há checkout real neste teste.'
+        : 'HOMOLOGAÇÃO NEON: falha ao consultar o banco. Nenhum dado demonstrativo foi usado como fallback.';
+    });
+    if (AtleticStore.neonStatus() !== 'loading') {
+      window.dispatchEvent(new CustomEvent('atletic:store-changed',{detail:{source:'neon_preview'}}));
+    }
+  }
   window.addEventListener('storage',event=>{if(event.key===AtleticStore.KEY){products=AtleticStore.catalog();renderCategories();renderProducts();renderCart()}if(event.key===THEME_KEY)applyTheme(readTheme())});
 })();

@@ -75,8 +75,9 @@ async function checkRole({ quiet = false } = {}) {
     });
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.authorized) {
-      notice('Sessão Neon validada! A conta está autorizada como administradora. Os módulos ainda não foram migrados.', true);
+      notice('Sessão Neon validada! Acesso administrativo autorizado para testes no banco Neon.', true);
       signout.hidden = false;
+      document.getElementById('neonDataTests')?.removeAttribute('hidden');
       return true;
     }
     if (!quiet) {
@@ -198,6 +199,42 @@ otpForm?.addEventListener('submit', async (event) => {
     submit.disabled = false;
   }
 });
+
+
+// Funcionalidades de homologação limitadas a admin Neon verificado.
+// Tokens permanecem na memória do SDK; nunca no localStorage nem nos logs.
+async function runNeonTest(operation, method='GET') {
+  const box = document.getElementById('neonTestOutput');
+  const id = operation === 'smoke' ? 'neonSmokeTest' : 'neonReadData';
+  const button = document.getElementById(id);
+  if (!box || !button) return;
+  button.disabled = true;
+  box.textContent = 'Executando '+(operation === 'smoke' ? 'transação reversível' : 'consulta de dados')+' no Neon...';
+  try {
+    const jwt = await auth.token();
+    const token = String(jwt?.data?.token || '');
+    if (jwt?.error || !token) throw new Error('no_valid_session');
+    const response = await fetch('/api/admin-dashboard?neonApi='+encodeURIComponent(operation), {
+      method, cache:'no-store',
+      headers: {'Authorization': 'Bearer '+token, ...(method==='POST'?{'Content-Type':'application/json'}:{})},
+      ...(method==='POST'?{body:'{}'}:{})
+    });
+    const payload = await response.json().catch(()=>({error:'invalid_response'}));
+    if (!response.ok) {
+      box.textContent = 'Teste não aprovado (HTTP '+response.status+'): '+String(payload.error || 'error').slice(0,90);
+      return;
+    }
+    box.textContent = operation === 'smoke'
+      ? 'APROVADO: '+(payload.tests||[]).join(', ')+'\nTransação revertida: '+Boolean(payload.rolledBack)
+      : 'Leitura Neon: '+JSON.stringify(payload.counts||{},null,2);
+  } catch {
+    box.textContent = 'Não foi possível executar o teste. Confira a sessão Neon e o console do navegador.';
+  } finally {
+    button.disabled = false;
+  }
+}
+document.getElementById('neonReadData')?.addEventListener('click',()=>runNeonTest('adminSummary','GET'));
+document.getElementById('neonSmokeTest')?.addEventListener('click',()=>runNeonTest('smoke','POST'));
 
 const resetUrl = new URL(location.href);
 const resetToken = resetUrl.searchParams.get('token');

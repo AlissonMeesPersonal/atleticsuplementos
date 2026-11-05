@@ -23,11 +23,11 @@
     },
     {
       "source": "/admin",
-      "destination": "/admin.html"
+      "destination": "/neon-gestao.html"
     },
     {
       "source": "/admin.html",
-      "destination": "/admin.html"
+      "destination": "/neon-gestao.html"
     },
     {
       "source": "/styles.css",

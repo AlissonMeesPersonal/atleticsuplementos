@@ -1,3 +1,5 @@
+import { neon } from '@neondatabase/serverless';
+import { getVerifiedNeonAdmin } from '../lib/neon-admin-verify.js';
 const json=(res,status,body)=>res.status(status).json(body);
 
 async function getAdmin(req){
@@ -51,6 +53,36 @@ function sanitizeVisual(value={}){
 }
 
 export default async function handler(req,res){
+  // A Vercel Production continua usando o fluxo legado até o corte validado.
+  // O Preview usa Neon somente com leitura pública filtrada por chave e
+  // escrita com JWT Neon verificado + papel admin ativo no banco.
+  if(process.env.VERCEL_ENV==='preview'){
+    res.setHeader('Cache-Control','no-store');
+    if(!process.env.NEON_DATABASE_URL)return json(res,503,{error:'Neon não configurado para Preview.'});
+    try{
+      const sql=neon(process.env.NEON_DATABASE_URL);
+      if(req.method==='GET'){
+        const records=await sql`SELECT value FROM public.store_settings WHERE key='homepage_visuals' LIMIT 1`;
+        return json(res,200,{visuals:records[0]?.value||{hero:[],highlights:{}}});
+      }
+      if(req.method!=='POST')return json(res,405,{error:'Método não permitido.'});
+      const admin=await getVerifiedNeonAdmin(req);
+      if(!admin)return json(res,401,{error:'Administrador Neon autenticado necessário.'});
+      const hero=Array.isArray(req.body?.hero)?req.body.hero.map(sanitizeVisual).filter(Boolean).slice(0,3):[];
+      const categories=['Proteínas','Creatinas','Pré-treinos','Vitaminas','Acessórios'];
+      const highlights={};
+      for(const category of categories){
+        const v=sanitizeVisual(req.body?.highlights?.[category]||{});
+        if(v)highlights[category]=v;
+      }
+      const value={hero,highlights};
+      await sql`INSERT INTO public.store_settings(key,value) VALUES('homepage_visuals',${JSON.stringify(value)}::jsonb)
+        ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()`;
+      return json(res,200,{success:true,visuals:value,source:'neon_preview'});
+    }catch{
+      return json(res,500,{error:'Não foi possível consultar ou atualizar a vitrine Neon.'});
+    }
+  }
   try{
     if(req.method==='GET'){
       return json(res,200,{visuals:await readVisuals()});

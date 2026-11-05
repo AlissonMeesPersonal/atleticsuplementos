@@ -3,79 +3,79 @@
   "rewrites": [
     {
       "source": "/neon-admin-test",
-      "destination": "/dist/neon-admin-test.html"
+      "destination": "/neon-admin-test.html"
     },
     {
       "source": "/neon-admin-test.js",
-      "destination": "/dist/neon-admin-test.js"
+      "destination": "/neon-admin-test.js"
     },
     {
       "source": "/",
-      "destination": "/dist/index.html"
+      "destination": "/index.html"
     },
     {
       "source": "/admin",
-      "destination": "/dist/admin.html"
+      "destination": "/admin.html"
     },
     {
       "source": "/admin.html",
-      "destination": "/dist/admin.html"
+      "destination": "/admin.html"
     },
     {
       "source": "/styles.css",
-      "destination": "/dist/styles.css"
+      "destination": "/styles.css"
     },
     {
       "source": "/admin.css",
-      "destination": "/dist/admin.css"
+      "destination": "/admin.css"
     },
     {
       "source": "/admin.js",
-      "destination": "/dist/admin.js"
+      "destination": "/admin.js"
     },
     {
       "source": "/admin-auth.js",
-      "destination": "/dist/admin-auth.js"
+      "destination": "/admin-auth.js"
     },
     {
       "source": "/app.js",
-      "destination": "/dist/app.js"
+      "destination": "/app.js"
     },
     {
       "source": "/banners.js",
-      "destination": "/dist/banners.js"
+      "destination": "/banners.js"
     },
     {
       "source": "/carousel.js",
-      "destination": "/dist/carousel.js"
+      "destination": "/carousel.js"
     },
     {
       "source": "/store-config.js",
-      "destination": "/dist/store-config.js"
+      "destination": "/store-config.js"
     },
     {
       "source": "/store-data.js",
-      "destination": "/dist/store-data.js"
+      "destination": "/store-data.js"
     },
     {
       "source": "/assets/:path*",
-      "destination": "/dist/assets/:path*"
+      "destination": "/assets/:path*"
     },
     {
       "source": "/purchase-flow.js",
-      "destination": "/dist/purchase-flow.js"
+      "destination": "/purchase-flow.js"
     },
     {
       "source": "/purchase-flow.css",
-      "destination": "/dist/purchase-flow.css"
+      "destination": "/purchase-flow.css"
     },
     {
       "source": "/customer-account.js",
-      "destination": "/dist/customer-account.js"
+      "destination": "/customer-account.js"
     },
     {
       "source": "/customer-account.css",
-      "destination": "/dist/customer-account.css"
+      "destination": "/customer-account.css"
     }
   ],
   "headers": [
@@ -153,5 +153,6 @@
       ]
     }
   ],
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
 }

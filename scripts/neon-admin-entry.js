@@ -23,7 +23,7 @@ async function checkRole() {
     notice('A sessão existe, mas ainda não foi possível obter um token de autorização.');
     return;
   }
-  const response = await fetch('/api/neon-admin-verify', {
+  const response = await fetch('/api/admin-dashboard?neonAuthCheck=1', {
     method: 'GET',
     cache: 'no-store',
     headers: { Authorization: `Bearer ${token}` },

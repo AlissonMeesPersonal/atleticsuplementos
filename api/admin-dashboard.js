@@ -1,4 +1,5 @@
 import neonVerify from '../lib/neon-admin-verify.js';
+import neonMigrationHandler from '../lib/neon-migration-api.js';
 const json=(res,status,body)=>res.status(status).json(body);
 
 async function validateAdmin(req){
@@ -66,6 +67,7 @@ function lastSixMonths(){
 
 export default async function handler(req,res){
   if (req.query?.neonAuthCheck === '1') return neonVerify(req,res);
+  if (req.query?.neonApi) return neonMigrationHandler(req,res);
 
   if(req.method!=='GET')return json(res,405,{error:'Método não permitido.'});
   const ctx=await validateAdmin(req);

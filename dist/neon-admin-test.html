@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex, nofollow, noarchive">
-  <title>Atletic · Autenticação Neon de homologação</title>
+  <meta name="referrer" content="no-referrer">
+  <title>Atletic · Teste seguro de autenticação Neon</title>
   <style>
     :root {color-scheme:dark;font-family:system-ui,sans-serif;background:#121212;color:#f8f8f8}
     body {display:grid;place-items:center;min-height:95vh;margin:0;padding:20px}
@@ -12,21 +13,29 @@
     h1 {font-size:24px;margin:0 0 10px} p{color:#ccc;line-height:1.5}
     label {display:block;margin:14px 0 6px;font-size:14px}
     input {width:100%;box-sizing:border-box;padding:12px;color:#fff;background:#121212;border:1px solid #666;border-radius:8px}
-    button {background:#ee7a23;border:0;border-radius:8px;color:#161616;padding:12px;font-weight:700;cursor:pointer;margin-top:18px}
-    button[disabled]{opacity:.6}
+    button {background:#ee7a23;border:0;border-radius:8px;color:#161616;padding:12px;font-weight:700;cursor:pointer;margin-top:14px}
+    button[disabled]{opacity:.6}button.secondary{border:1px solid #555;background:#2b2b2b;color:#eee;margin-right:5px}
     #neonStatus {min-height:42px;margin-top:20px}
     #neonStatus[data-status=success]{color:#9ee89d}
+    [hidden]{display:none !important}
   </style>
 </head>
 <body><main>
   <p>ATLETIC / HOMOLOGAÇÃO</p>
   <h1>Teste de autenticação Neon</h1>
-  <p>Este formulário não altera estoque, pedidos nem usuários. A loja de produção continua no Supabase até a migração completa.</p>
+  <p>A loja em produção continua no Supabase. As contas migradas precisam de uma nova senha Neon, e o teste não modifica produtos, estoque ou pedidos.</p>
   <form id="neonAdminLogin">
     <label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required>
     <label for="password">Senha Neon</label><input id="password" name="password" type="password" autocomplete="current-password" required>
     <button type="submit">Testar acesso Neon</button>
   </form>
-  <button id="neonLogout" type="button" hidden>Sair</button>
+  <button id="neonRecovery" class="secondary" type="button">Definir ou recuperar senha</button>
+  <button id="neonVerifyEmail" class="secondary" type="button">Verificar e-mail</button>
+  <form id="neonResetForm" hidden>
+    <label for="newPassword">Nova senha Neon</label><input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+    <label for="confirmPassword">Confirmar senha</label><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+    <button type="submit">Salvar nova senha</button>
+  </form>
+  <button id="neonLogout" class="secondary" type="button" hidden>Sair</button>
   <p id="neonStatus" role="status" aria-live="polite">Verificando sessão...</p>
 </main><script defer src="/neon-admin-test.js"></script></body></html>

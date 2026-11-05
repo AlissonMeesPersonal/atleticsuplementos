@@ -9,7 +9,13 @@ const signout = document.getElementById('neonLogout');
 const recovery = document.getElementById('neonRecovery');
 const verification = document.getElementById('neonVerifyEmail');
 const button = form.querySelector('button[type=submit]');
-const auth = createAuthClient(baseUrl);
+let auth = null;
+try {
+  auth = createAuthClient(baseUrl);
+} catch {
+  // A tela continua interativa mesmo se o SDK não conseguir inicializar.
+  auth = null;
+}
 
 function notice(message, positive = false) {
   status.textContent = message;
@@ -192,4 +198,9 @@ signout.addEventListener('click', async () => {
     await checkRole();
   } catch(err) { notice(classify(err)); }
 });
-if (!resetToken && !resetError) checkRole().catch(err => notice(classify(err)));
+window.__atleticNeonClientReady = Boolean(auth);
+if (!auth) {
+  notice('O cliente Neon Auth não iniciou. Recarregue a página ou consulte o console.');
+} else if (!resetToken && !resetError) {
+  checkRole().catch(err => notice(classify(err)));
+}

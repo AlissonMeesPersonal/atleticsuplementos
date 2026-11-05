@@ -52,7 +52,7 @@
     <section id="adminPane" hidden>
       <div class="intro"><div><h1>Operações conectadas ao Neon</h1><p>Administrador: <strong id="adminName">—</strong> · Consultas e gravações no banco de homologação.</p></div>
         <div class="controls"><button id="reload" class="secondary">Atualizar dados</button><button id="logout" class="secondary">Sair</button></div></div>
-      <div class="warn"><strong>Atenção:</strong> os cadastros feitos aqui são gravados no Neon, mas ainda não aparecem automaticamente na vitrine antiga baseada em dados locais. Pedidos gerados aqui são apenas rascunhos sem cobrança. A produção Supabase continua intacta.</div>
+      <div class="warn"><strong>Ambiente de homologação:</strong> os cadastros feitos aqui são gravados no Neon. Após cadastrar um produto, adicionar estoque e publicá-lo, confira o resultado na <a style="color:#ffd29f;text-decoration:underline" href="/?neonPreview=1" target="_blank" rel="noopener noreferrer">Vitrine Neon de teste</a>, que lê o banco novo em vez dos dados demonstrativos do navegador. Pedidos criados aqui são somente rascunhos sem pagamento. A produção e o Supabase antigo continuam intactos.</div>
       <div class="metrics" id="summary"></div>
       <div class="panels">
         <section class="card"><h2>Nova marca</h2><form id="brandForm"><label>Nome da marca<input name="name" minlength="2" maxlength="140" required placeholder="Nome comercial"></label><button type="submit">Cadastrar no Neon</button></form></section>

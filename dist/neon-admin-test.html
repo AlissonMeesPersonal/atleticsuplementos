@@ -42,5 +42,12 @@
     <button type="submit">Salvar nova senha</button>
   </form>
   <button id="neonLogout" class="secondary" type="button" hidden>Sair</button>
+  <section id="neonDataTests" hidden aria-label="Verificações da migração Neon">
+    <h2 style="font-size:18px;margin:24px 0 10px">Banco Neon · testes de homologação</h2>
+    <p>Os testes são isolados da produção e não criam pedidos reais.</p>
+    <button id="neonReadData" class="secondary" type="button">Consultar tabelas Neon</button>
+    <button id="neonSmokeTest" class="secondary" type="button">Testar cadastro, estoque e pedido (reverter)</button>
+    <pre id="neonTestOutput" role="status" style="white-space:pre-wrap;font-size:12px;color:#ade0a5;margin-top:14px"></pre>
+  </section>
   <p id="neonStatus" role="status" aria-live="polite">Verificando sessão...</p>
 </main><script defer src="/neon-ui-health.js"></script><script defer src="/neon-admin-test.js"></script></body></html>

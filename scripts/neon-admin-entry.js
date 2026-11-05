@@ -201,40 +201,61 @@ otpForm?.addEventListener('submit', async (event) => {
 });
 
 
-// Funcionalidades de homologação limitadas a admin Neon verificado.
-// Tokens permanecem na memória do SDK; nunca no localStorage nem nos logs.
-async function runNeonTest(operation, method='GET') {
-  const box = document.getElementById('neonTestOutput');
-  const id = operation === 'smoke' ? 'neonSmokeTest' : 'neonReadData';
-  const button = document.getElementById(id);
-  if (!box || !button) return;
+// Operações de homologação limitadas a administrador Neon verificado.
+// O JWT é emitido pelo Auth, fica apenas na memória e nunca vai ao localStorage.
+const neonOperations = Object.freeze({
+  adminSummary: {id:'neonReadData',label:'Resumo do banco',method:'GET'},
+  publicCatalog: {id:'neonCatalogBtn',label:'Catálogo',method:'GET'},
+  adminInventory: {id:'neonInventoryBtn',label:'Estoque',method:'GET'},
+  adminOrders: {id:'neonOrdersBtn',label:'Pedidos',method:'GET'},
+  smoke: {id:'neonSmokeTest',label:'Teste reversível',method:'POST'},
+});
+async function runNeonTest(operation) {
+  const output = document.getElementById('neonTestOutput');
+  const conf = neonOperations[operation];
+  const button = document.getElementById(conf?.id);
+  if (!output || !button || !conf) return;
   button.disabled = true;
-  box.textContent = 'Executando '+(operation === 'smoke' ? 'transação reversível' : 'consulta de dados')+' no Neon...';
+  output.textContent = 'Consultando '+conf.label.toLowerCase()+' no Neon...';
   try {
+    // Nunca enviar token pelo query string nem armazená-lo em log ou navegador.
     const jwt = await auth.token();
     const token = String(jwt?.data?.token || '');
-    if (jwt?.error || !token) throw new Error('no_valid_session');
+    if (jwt?.error || !token) throw new Error('not_authenticated');
     const response = await fetch('/api/admin-dashboard?neonApi='+encodeURIComponent(operation), {
-      method, cache:'no-store',
-      headers: {'Authorization': 'Bearer '+token, ...(method==='POST'?{'Content-Type':'application/json'}:{})},
-      ...(method==='POST'?{body:'{}'}:{})
+      method: conf.method, cache:'no-store',
+      headers: {Authorization: 'Bearer '+token, ...(conf.method==='POST'?{'Content-Type':'application/json'}:{})},
+      ...(conf.method==='POST'?{body:'{}'}:{})
     });
-    const payload = await response.json().catch(()=>({error:'invalid_response'}));
+    const result = await response.json().catch(()=>({error:'invalid_response'}));
     if (!response.ok) {
-      box.textContent = 'Teste não aprovado (HTTP '+response.status+'): '+String(payload.error || 'error').slice(0,90);
+      output.textContent = 'Não aprovado (HTTP '+response.status+'): '+String(result.error||'unknown').slice(0,100);
       return;
     }
-    box.textContent = operation === 'smoke'
-      ? 'APROVADO: '+(payload.tests||[]).join(', ')+'\nTransação revertida: '+Boolean(payload.rolledBack)
-      : 'Leitura Neon: '+JSON.stringify(payload.counts||{},null,2);
+    if (operation==='smoke') {
+      output.textContent = (result.passed && result.rolledBack ? 'APROVADO' : 'REVISAR')+
+        '\\nEtapas: '+(Array.isArray(result.tests)?result.tests.join(', '):'não informadas')+
+        '\\nDados persistidos: '+(result.rolledBack?'nenhum (ROLLBACK)':'revisar transação');
+    } else if(operation==='adminSummary') {
+      output.textContent='Resumo Neon (tabelas):\\n'+JSON.stringify(result.counts||{},null,2);
+    } else if(operation==='publicCatalog') {
+      output.textContent='Catálogo Neon: '+(result.products||[]).length+' produtos, '+(result.variants||[]).length+' variações, '+(result.categories||[]).length+' categorias.\\n'+
+      JSON.stringify((result.products||[]).slice(0,6).map(p=>({name:p.name,status:p.status})),null,2);
+    } else if(operation==='adminInventory') {
+      output.textContent='Estoque Neon: '+(result.inventory||[]).length+' registros.\\n'+JSON.stringify((result.inventory||[]).slice(0,15),null,2);
+    } else if(operation==='adminOrders') {
+      output.textContent='Pedidos Neon: '+(result.orders||[]).length+' registros.\\n'+
+        JSON.stringify((result.orders||[]).slice(0,10).map(o=>({number:o.order_number,status:o.status,payment:o.payment_status,total:o.total})),null,2);
+    }
   } catch {
-    box.textContent = 'Não foi possível executar o teste. Confira a sessão Neon e o console do navegador.';
+    output.textContent = 'Falha na chamada ao Neon. Verifique a sessão e o console de rede do navegador.';
   } finally {
     button.disabled = false;
   }
 }
-document.getElementById('neonReadData')?.addEventListener('click',()=>runNeonTest('adminSummary','GET'));
-document.getElementById('neonSmokeTest')?.addEventListener('click',()=>runNeonTest('smoke','POST'));
+for (const [operation, cfg] of Object.entries(neonOperations)) {
+  document.getElementById(cfg.id)?.addEventListener('click',()=>runNeonTest(operation));
+}
 
 const resetUrl = new URL(location.href);
 const resetToken = resetUrl.searchParams.get('token');

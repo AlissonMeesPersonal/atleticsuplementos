@@ -72,7 +72,76 @@
     return refreshLegacyDemo(base);
   }
 
+
+  // Homologação Neon explicitamente ativada na URL; não modifica a loja normal.
+  // A base PostgreSQL é a fonte de leitura: nunca usar dados demo como fallback silencioso.
+  const neonPreview = new URLSearchParams(window.location.search).get('neonPreview') === '1';
+  let neonSnapshot = null;
+  let neonStatus = neonPreview ? 'loading' : 'off';
+  function emptyNeon() {
+    return Object.fromEntries(Object.keys(initial).map(key => [key, []]));
+  }
+  const cents = value => {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) : 0;
+  };
+  function convertNeonCatalog(payload) {
+    if (!payload || payload.source !== 'neon_preview') throw new Error('invalid_neon_catalog');
+    const data = emptyNeon();
+    data.brands = (payload.brands || []).map(b => ({id:b.id,name:b.name,active:true}));
+    data.categories = (payload.categories || []).map(c => ({id:c.id,name:c.name,slug:c.slug,active:true}));
+    const imageMap = new Map();
+    const variantImages = new Map();
+    for (const im of payload.images || []) {
+      const target = im.variant_id ? variantImages : imageMap;
+      const id = im.variant_id || im.product_id;
+      if (!target.has(id)) target.set(id, []);
+      target.get(id).push({url:im.image_url,alt:im.alt_text || ''});
+    }
+    data.products = (payload.products || []).map(p => ({
+      id:p.id,name:p.name,brandId:p.brand_id,categoryId:p.category_id,
+      active:true,featured:Boolean(p.featured),description:p.short_description || '',
+      images:imageMap.get(p.id) || [],
+    }));
+    data.variants = (payload.variants || []).map(v => {
+      const attributes = v.attributes && typeof v.attributes === 'object' ? v.attributes : {};
+      const normal = cents(v.price);
+      const promo = cents(v.promotional_price);
+      const hasPromo = promo > 0 && promo < normal;
+      return {
+        id:v.id,productId:v.product_id,sku:v.sku,active:true,
+        flavor:String(attributes.flavor || attributes.sabor || v.name || ''),
+        size:String(attributes.size || attributes.tamanho || (v.weight_g ? String(v.weight_g)+'g' : '')),
+        price:hasPromo ? promo : normal,comparePrice:hasPromo ? normal : 0,
+        cost:0,barcode:'',image:variantImages.get(v.id)?.[0]?.url || '',
+      };
+    });
+    data.stock = (payload.inventory || []).map(i => ({
+      id:'neon-inventory-'+i.variant_id,variantId:i.variant_id,
+      delta:Math.max(0,Number(i.quantity_available || 0)),
+      reason:'Disponível no Neon',createdAt:'',
+    }));
+    const minimumStock = new Map((payload.inventory || []).map(i => [i.variant_id, Number(i.minimum_stock || 0)]));
+    for (const variant of data.variants) variant.minStock = minimumStock.get(variant.id) || 0;
+    return data;
+  }
+  async function loadNeonCatalog() {
+    if (!neonPreview) return;
+    try {
+      const response=await fetch('/api/admin-dashboard?neonApi=publicCatalog',{cache:'no-store'});
+      if (!response.ok) throw new Error('neon_catalog_http_error');
+      const payload=await response.json();
+      neonSnapshot=convertNeonCatalog(payload);
+      neonStatus='ready';
+    } catch {
+      neonSnapshot=emptyNeon();
+      neonStatus='error';
+    }
+    window.dispatchEvent(new CustomEvent('atletic:store-changed',{detail:{source:'neon_preview',status:neonStatus}}));
+  }
+
   function load() {
+    if (neonPreview) return clone(neonSnapshot || emptyNeon());
     try {
       const normalized = normalize(JSON.parse(localStorage.getItem(KEY)));
       localStorage.setItem(KEY, JSON.stringify(normalized));
@@ -83,6 +152,7 @@
   }
 
   function save(data) {
+    if (neonPreview) throw new Error('Neon Preview é somente leitura nesta vitrine. Use o painel autenticado.');
     localStorage.setItem(KEY, JSON.stringify(normalize(data)));
     window.dispatchEvent(new CustomEvent('atletic:store-changed'));
   }
@@ -142,5 +212,7 @@
 
   function reset() { save(clone(initial)); }
 
-  window.AtleticStore = { KEY, uid, load, save, reset, catalog, stockBalance, activeBanners, initial: clone(initial) };
+  window.AtleticStore = { KEY, uid, load, save, reset, catalog, stockBalance, activeBanners,
+    neonPreview, neonStatus: () => neonStatus, initial: clone(initial) };
+  if (neonPreview) loadNeonCatalog();
 })();

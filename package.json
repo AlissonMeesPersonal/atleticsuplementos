@@ -5,6 +5,14 @@
     "sharp": "^0.34.4",
     "archiver": "^7.0.1",
     "@zxing/library": "^0.21.3",
-    "@neondatabase/serverless": "1.2.0"
+    "@neondatabase/serverless": "1.2.0",
+    "@neondatabase/auth": "0.7.0-beta",
+    "jose": "6.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  },
+  "scripts": {
+    "build": "node scripts/build-neon-admin.mjs"
   }
 }

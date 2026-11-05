@@ -351,7 +351,36 @@
   $('#cartOpen').onclick=()=>{$('#cart').showModal();document.body.style.overflow='hidden'};function closeCart(){$('#cart').close()}$('#cartClose').onclick=closeCart;$('#cart').addEventListener('close',()=>{document.body.style.overflow='';$('#cartOpen').focus()});
   $('#couponForm').onsubmit=e=>{e.preventDefault();const code=$('#coupon').value.trim().toUpperCase();const found=AtleticStore.load().coupons.find(c=>c.code===code&&c.active);if(found){activeCoupon=found.code;renderCart()}else $('#couponMessage').textContent='Cupom não encontrado ou inativo.'};
   $('#removeCoupon').onclick=()=>{activeCoupon=null;renderCart()};
-  $('#checkout').onclick=()=>{$('#checkoutMessage').textContent='Checkout ainda bloqueado. A próxima integração validará preço, frete, cupom, estoque e pagamento no servidor antes de criar o pedido.'};
+  $('#checkout').onclick=async()=>{
+    const message=$('#checkoutMessage');
+    if(!AtleticStore.neonPreview){
+      message.textContent='Checkout ainda bloqueado. A próxima integração validará preço, frete, cupom, estoque e pagamento no servidor antes de criar o pedido.';
+      return;
+    }
+    const entries=Object.entries(cart).filter(([id,quantity])=>quantity>0);
+    if(!entries.length){message.textContent='A sacola está vazia.';return;}
+    const button=$('#checkout');
+    button.disabled=true;
+    message.textContent='Consultando preço e estoque do Neon — sem criar pedido nem cobrar...';
+    try{
+      const response=await fetch('/api/admin-dashboard?neonApi=publicQuote',{
+        method:'POST',cache:'no-store',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({items:entries.map(([variantId,quantity])=>({variantId,quantity}))})
+      });
+      const quote=await response.json().catch(()=>({}));
+      if(!response.ok){
+        message.textContent=response.status===409
+          ? 'Estoque insuficiente ou variação indisponível no Neon. Atualize o catálogo.'
+          : 'A cotação não foi concluída: '+String(quote.error||'erro do servidor').slice(0,80);
+        return;
+      }
+      message.textContent='Cotação Neon: '+money(Number(quote.totalCents||0))+
+        ' (sem frete/descontos). Apenas simulação: nenhum pedido ou pagamento criado.';
+    }catch{
+      message.textContent='Falha ao consultar a cotação do banco Neon. Nenhum pedido foi criado.';
+    }finally{button.disabled=false;}
+  };
   $('#year').textContent=new Date().getFullYear();
 
   async function loadSiteVisuals(){

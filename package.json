@@ -13,6 +13,7 @@
     "esbuild": "0.25.12"
   },
   "scripts": {
-    "build": "node scripts/build-neon-admin.mjs"
+    "build": "npm run check:neon-preview && node scripts/build-neon-admin.mjs",
+    "check:neon-preview": "node --check dist/app.js && node --check dist/store-data.js && node --check lib/neon-migration-api.js && node --check scripts/neon-admin-entry.js"
   }
 }

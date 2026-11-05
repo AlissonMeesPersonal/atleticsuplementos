@@ -2,6 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/neon-gestao",
+      "destination": "/neon-gestao.html"
+    },
+    {
+      "source": "/neon-gestao.js",
+      "destination": "/neon-gestao.js"
+    },
+    {
       "source": "/neon-admin-test",
       "destination": "/neon-admin-test.html"
     },
@@ -141,6 +149,19 @@
     },
     {
       "source": "/neon-admin-test",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/neon-gestao",
       "headers": [
         {
           "key": "Cache-Control",

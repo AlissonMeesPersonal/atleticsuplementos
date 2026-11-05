@@ -12,7 +12,7 @@ const otpForm = document.getElementById('neonOtpForm');
 const button = form.querySelector('button[type=submit]');
 let auth = null;
 try {
-  auth = createAuthClient(baseUrl);
+  auth = createAuthClient(baseUrl, { fetchOptions: { credentials: 'include' } });
 } catch {
   // A tela continua interativa mesmo se o SDK não conseguir inicializar.
   auth = null;
@@ -41,35 +41,53 @@ function classify(err) {
 function currentEmail() {
   return String(form.elements.namedItem('email')?.value || '').trim();
 }
-async function checkRole() {
-  const { data, error } = await auth.getSession();
-  if (error) {
-    notice('Neon Auth respondeu com falha ao verificar a sessão. ' + classify(error));
-    return;
+async function checkRole({ quiet = false } = {}) {
+  // O Auth funciona em domínio diferente do Preview Vercel. Cookies exigem
+  // credentials:'include'; token() é a API oficial para JWT Bearer externo.
+  let token = '';
+  try {
+    if (typeof auth.token === 'function') {
+      const jwt = await auth.token();
+      if (!jwt?.error) token = String(jwt?.data?.token || '');
+    }
+  } catch { /* O fallback consulta a sessão sem registrar dados pessoais. */ }
+  if (!token) {
+    try {
+      const session = await auth.getSession();
+      if (session?.error) {
+        if (!quiet) notice('Não foi possível recuperar a sessão Neon (' + String(session.error.code || 'session_error').toLowerCase() + '). Confirme os cookies de terceiros.');
+        return false;
+      }
+      token = String(session?.data?.session?.access_token || '');
+    } catch {
+      if (!quiet) notice('O navegador não conseguiu consultar a sessão Neon. Verifique se o bloqueio de cookies de terceiros está ativo.');
+      return false;
+    }
   }
-  if (!data?.session || !data?.user) {
-    notice('Nenhuma sessão Neon ativa. Se sua conta foi migrada, defina uma nova senha pelo botão abaixo.');
-    return;
+  if (!token) {
+    if (!quiet) notice('Nenhuma sessão Neon visível neste navegador. Faça login; se já entrou, verifique a permissão de cookies entre a Vercel e o Neon Auth.');
+    return false;
   }
-  const token = data.session.access_token || await auth.getJWTToken?.();
-  if (typeof token !== 'string' || !token) {
-    notice('Sessão encontrada, mas o token JWT não foi disponibilizado para a checagem administrativa.');
-    return;
-  }
-  const response = await fetch('/api/admin-dashboard?neonAuthCheck=1', {
-    method: 'GET', cache: 'no-store',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const result = await response.json().catch(() => ({}));
-  if (response.ok && result.authorized) {
-    notice('Sessão Neon e perfil administrativo validados. O painel de produção ainda não foi migrado.',true);
-    signout.hidden = false;
-  } else if (response.status === 403) {
-    notice('Login válido, mas acesso administrativo ainda não liberado. Verifique o e-mail e o vínculo de sua conta.');
-  } else if (response.status === 401) {
-    notice('O token da sessão Neon não foi aceito pelo verificador. Consulte o diagnóstico da API.');
-  } else {
-    notice('A verificação administrativa não respondeu corretamente (HTTP '+response.status+').');
+  try {
+    const response = await fetch('/api/admin-dashboard?neonAuthCheck=1', {
+      method: 'GET', cache: 'no-store', credentials: 'same-origin',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && result.authorized) {
+      notice('Sessão Neon validada! A conta está autorizada como administradora. Os módulos ainda não foram migrados.', true);
+      signout.hidden = false;
+      return true;
+    }
+    if (!quiet) {
+      if (response.status === 403) notice('O login Neon funcionou, mas a conta ainda não tem autorização administrativa no sistema.');
+      else if (response.status === 401) notice('Sessão recebida, mas o token JWT foi rejeitado pelo verificador administrativo.');
+      else notice('A verificação administrativa não respondeu corretamente (HTTP ' + response.status + ').');
+    }
+    return false;
+  } catch {
+    if (!quiet) notice('A sessão foi obtida, mas a consulta ao painel de verificação falhou. Verifique a aba Rede.');
+    return false;
   }
 }
 form.addEventListener('submit', async event => {
@@ -81,10 +99,18 @@ form.addEventListener('submit', async event => {
   try {
     const { error } = await auth.signIn.email({email,password});
     if (error) {
+      // Algumas respostas da API ou da sessão podem falhar mesmo quando uma
+      // sessão válida já foi criada. Sempre conferir autorização assinada.
+      const existingAuthorization = await checkRole({quiet:true});
+      if (existingAuthorization) return;
       const code = String(error.code || '').toUpperCase();
-      notice(['INVALID_EMAIL_OR_PASSWORD','INVALID_PASSWORD','INVALID_CREDENTIALS'].includes(code)
-        ? 'E-mail ou senha não conferem. A conta Neon existe, mas sua senha pode ser diferente da antiga. Clique em “Definir ou recuperar senha”; depois confirme o e-mail pelo código enviado.'
-        : 'Não foi possível entrar. ' + classify(error));
+      if (code === 'USER_NOT_FOUND') {
+        notice('Não foi possível localizar uma sessão válida no navegador. A conta está cadastrada no Neon; verifique cookies de terceiros, atualize a página e tente novamente. Código técnico: USER_NOT_FOUND.');
+      } else {
+        notice(['INVALID_EMAIL_OR_PASSWORD','INVALID_PASSWORD','INVALID_CREDENTIALS'].includes(code)
+          ? 'E-mail ou senha não conferem. Se acabou de redefinir a senha, tente novamente com a senha Neon atual.'
+          : 'Não foi possível entrar. ' + classify(error));
+      }
       return;
     }
     await checkRole();
@@ -233,5 +259,5 @@ window.__atleticNeonClientReady = Boolean(auth);
 if (!auth) {
   notice('O cliente Neon Auth não iniciou. Recarregue a página ou consulte o console.');
 } else if (!resetToken && !resetError) {
-  checkRole().catch(err => notice(classify(err)));
+  checkRole().catch(() => notice('Não foi possível completar a verificação da sessão Neon.'));
 }

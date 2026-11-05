@@ -50,4 +50,15 @@
     <pre id="neonTestOutput" role="status" style="white-space:pre-wrap;font-size:12px;color:#ade0a5;margin-top:14px"></pre>
   </section>
   <p id="neonStatus" role="status" aria-live="polite">Verificando sessão...</p>
+  <section id="neonBusinessChecks" hidden aria-label="Verificação dos módulos Neon" style="margin-top:24px;padding-top:20px;border-top:1px solid #555">
+    <h2 style="font-size:18px">Módulos Neon — homologação</h2>
+    <p>Consulta de catálogo e inventário no banco Neon. O teste de escrita cria e desfaz registros dentro da mesma transação, sem persistir produtos nem pedidos.</p>
+    <button id="neonCatalogBtn" class="secondary" type="button">Consultar catálogo</button>
+    <button id="neonSummaryBtn" class="secondary" type="button">Resumo do banco</button>
+    <button id="neonInventoryBtn" class="secondary" type="button">Consultar estoque</button>
+    <button id="neonOrdersBtn" class="secondary" type="button">Consultar pedidos</button>
+    <button id="neonSmokeBtn" type="button">Testar cadastro, estoque e pedido (desfazer)</button>
+    <pre id="neonBusinessResult" role="status" aria-live="polite" style="margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5;background:#121212;border:1px solid #444;padding:12px;border-radius:8px;min-height:32px">Nenhuma operação executada.</pre>
+    <p style="font-size:12px">Sem pagamentos, integrações externas ou alterações no Supabase. A vitrine e o painel comercial antigos ainda precisam ser migrados.</p>
+  </section>
 </main><script defer src="/neon-ui-health.js"></script><script defer src="/neon-admin-test.js"></script></body></html>

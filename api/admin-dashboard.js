@@ -1,3 +1,4 @@
+import neonVerify from '../lib/neon-admin-verify.js';
 const json=(res,status,body)=>res.status(status).json(body);
 
 async function validateAdmin(req){
@@ -64,6 +65,8 @@ function lastSixMonths(){
 }
 
 export default async function handler(req,res){
+  if (req.query?.neonAuthCheck === '1') return neonVerify(req,res);
+
   if(req.method!=='GET')return json(res,405,{error:'Método não permitido.'});
   const ctx=await validateAdmin(req);
   if(!ctx)return json(res,401,{error:'Administrador ou gestor autenticado necessário.'});

@@ -8,6 +8,7 @@ const status = document.getElementById('neonStatus');
 const signout = document.getElementById('neonLogout');
 const recovery = document.getElementById('neonRecovery');
 const verification = document.getElementById('neonVerifyEmail');
+const otpForm = document.getElementById('neonOtpForm');
 const button = form.querySelector('button[type=submit]');
 let auth = null;
 try {
@@ -81,8 +82,8 @@ form.addEventListener('submit', async event => {
     const { error } = await auth.signIn.email({email,password});
     if (error) {
       const code = String(error.code || '').toUpperCase();
-      notice(code === 'INVALID_EMAIL_OR_PASSWORD' || code === 'INVALID_PASSWORD'
-        ? 'Credenciais não aceitas. As contas migradas ainda precisam definir uma nova senha Neon.'
+      notice(['INVALID_EMAIL_OR_PASSWORD','INVALID_PASSWORD','INVALID_CREDENTIALS'].includes(code)
+        ? 'E-mail ou senha não conferem. A conta Neon existe, mas sua senha pode ser diferente da antiga. Clique em “Definir ou recuperar senha”; depois confirme o e-mail pelo código enviado.'
         : 'Não foi possível entrar. ' + classify(error));
       return;
     }
@@ -131,14 +132,44 @@ verification.addEventListener('click', async () => {
       email, callbackURL: location.origin + '/neon-admin-test'
     });
     if (result?.error) {
-      notice('Não foi possível solicitar a confirmação do e-mail. ' + classify(result.error));
+      notice('Não foi possível enviar o código. ' + classify(result.error));
     } else {
-      notice('Se a conta estiver registrada, será enviado um e-mail de verificação. Confira também a pasta spam.',true);
+      // O Neon Auth está configurado para confirmação por código (OTP), não link.
+      otpForm.hidden = false;
+      notice('Se o e-mail estiver registrado, você receberá um código numérico. Digite-o abaixo para confirmar o endereço. O código expira em aproximadamente 15 minutos.',true);
+      otpForm.elements.namedItem('otp')?.focus();
     }
   } catch(err) {
     notice(classify(err));
   } finally {
     verification.disabled = false;
+  }
+});
+
+otpForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const email = currentEmail();
+  const otp = String(otpForm.elements.namedItem('otp')?.value || '').trim();
+  if (!/^[0-9]{4,10}$/.test(otp)) {
+    notice('Informe o código numérico recebido por e-mail.');
+    return;
+  }
+  const submit = otpForm.querySelector('button[type=submit]');
+  submit.disabled = true;
+  notice('Confirmando o código com o Neon...');
+  try {
+    const {error} = await auth.emailOtp.verifyEmail({email, otp});
+    if (error) {
+      notice('Código não aceito ou expirado. ' + classify(error));
+      return;
+    }
+    otpForm.hidden = true;
+    otpForm.elements.namedItem('otp').value = '';
+    notice('E-mail confirmado no Neon! Agora entre com sua senha Neon. Se aparecer “invalid_credentials”, redefina a senha pelo botão de recuperação.',true);
+  } catch(err) {
+    notice(classify(err));
+  } finally {
+    submit.disabled = false;
   }
 });
 

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer">
+  <title>Atletic | Gestão Neon — Homologação</title>
+  <style>
+  :root {color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#111;color:#f5f4f0}
+  * {box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 80% -10%,#3d220e 0,transparent 39%),#111}
+  header{padding:22px max(22px,calc((100vw - 1320px)/2));border-bottom:1px solid #38332d;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+  .brand{font-size:19px;font-weight:900;letter-spacing:.03em}.brand span{color:#ff822a}
+  .sub{font-size:11px;letter-spacing:.14em;color:#aaa;text-transform:uppercase}
+  main{max-width:1320px;margin:auto;padding:28px 20px 65px}.intro{display:flex;justify-content:space-between;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:23px}
+  h1{font-size:clamp(25px,4vw,34px);margin:0 0 5px}h2{font-size:18px;margin:0 0 16px}p{line-height:1.55;color:#bab5ac;font-size:14px}
+  .tag{display:inline-flex;align-items:center;border:1px solid #6f4c29;color:#ffa260;border-radius:99px;padding:7px 11px;font-size:11px;letter-spacing:.09em}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:25px}
+  .metric{border:1px solid #3b342e;background:linear-gradient(150deg,#28221d,#1a1918);padding:18px;border-radius:13px;display:flex;flex-direction:column;gap:5px}
+  .metric strong{font-size:28px;color:#f5f0e8}.metric span{font-size:12px;color:#b5aaa0;text-transform:capitalize}
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{padding:22px;border:1px solid #343434;background:#1e1d1b;border-radius:16px;min-width:0}
+  .wide{grid-column:1/-1}.warn{border:1px solid #634a26;background:#2c2417;border-radius:12px;padding:13px 16px;color:#f6be83;font-size:13px;line-height:1.6;margin-bottom:20px}
+  form{display:grid;gap:12px}label{font-size:12px;color:#cbc6c0;display:grid;gap:6px}
+  input,select{width:100%;padding:12px;background:#141414;border:1px solid #49433d;color:#fff;border-radius:9px;min-height:43px;font-size:14px}
+  input:focus,select:focus{outline:2px solid #ff822a;outline-offset:1px}
+  button{border:1px solid #fd862a;padding:11px 16px;border-radius:9px;background:#ff822a;color:#121212;font-weight:750;cursor:pointer;font-size:13px}
+  button:disabled{opacity:.5;cursor:wait}.secondary,.small{background:#292622;color:#f0e8de;border:1px solid #5b5149}
+  .small{padding:7px 11px}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.controls{display:flex;gap:9px;flex-wrap:wrap}
+  table{border-collapse:collapse;width:100%;font-size:13px;text-align:left}th{color:#aaa;white-space:nowrap;letter-spacing:.02em;font-weight:600}
+  th,td{border-bottom:1px solid #393532;padding:12px 10px;vertical-align:middle}td small{display:block;margin-top:4px;color:#a69f97;font-size:11px}
+  .scroll{overflow-x:auto;max-height:340px;overflow-y:auto}
+  #notice{position:sticky;bottom:12px;margin-top:20px;border:1px solid #585038;padding:14px 17px;border-radius:10px;background:#2b271e;color:#d3eacb;z-index:3}
+  #notice[data-bad="1"]{color:#ffa7a0;border-color:#8d423c;background:#341e1c}
+  #loginPane{max-width:440px;margin:13vh auto 0}
+  [hidden]{display:none!important}
+  @media(max-width:750px){.panels{grid-template-columns:1fr}.card{grid-column:1/-1}.row{grid-template-columns:1fr}.scroll{font-size:12px}td,th{padding:10px 6px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div><div class="brand">ATLETIC<span> SUPLEMENTOS</span></div><div class="sub">Neon · Central de Gestão</div></div>
+    <span class="tag">HOMOLOGAÇÃO / SEM PAGAMENTOS</span>
+  </header>
+  <main>
+    <section id="loginPane" class="card">
+      <h1>Entrar com Neon</h1>
+      <p>Utilize a conta Neon já verificada. Nenhuma senha é salva neste painel.</p>
+      <form id="loginForm"><label>E-mail<input name="email" type="email" autocomplete="username" required></label>
+        <label>Senha Neon<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Validar acesso</button>
+      </form>
+      <p>Primeiro acesso? <a style="color:#ff9e5a" href="/neon-admin-test">Verificar e recuperar sua conta Neon</a></p>
+    </section>
+    <section id="adminPane" hidden>
+      <div class="intro"><div><h1>Operações conectadas ao Neon</h1><p>Administrador: <strong id="adminName">—</strong> · Consultas e gravações no banco de homologação.</p></div>
+        <div class="controls"><button id="reload" class="secondary">Atualizar dados</button><button id="logout" class="secondary">Sair</button></div></div>
+      <div class="warn"><strong>Atenção:</strong> os cadastros feitos aqui são gravados no Neon, mas ainda não aparecem automaticamente na vitrine antiga baseada em dados locais. Pedidos gerados aqui são apenas rascunhos sem cobrança. A produção Supabase continua intacta.</div>
+      <div class="metrics" id="summary"></div>
+      <div class="panels">
+        <section class="card"><h2>Nova marca</h2><form id="brandForm"><label>Nome da marca<input name="name" minlength="2" maxlength="140" required placeholder="Nome comercial"></label><button type="submit">Cadastrar no Neon</button></form></section>
+        <section class="card"><h2>Nova categoria</h2><form id="categoryForm"><label>Nome da categoria<input name="name" minlength="2" maxlength="140" required placeholder="Ex.: Creatinas"></label><button type="submit">Cadastrar no Neon</button></form></section>
+        <section class="card"><h2>Novo produto</h2><form id="productForm"><label>Nome do produto<input name="name" minlength="2" maxlength="140" required placeholder="Nome exibido no catálogo"></label><div class="row"><label>SKU<input name="sku" minlength="3" maxlength="90" required placeholder="ATL-001"></label><label>Preço (R$)<input name="price" type="number" min="0" max="1000000" step=".01" required placeholder="49.90"></label></div>
+          <div class="row"><label>Categoria<select id="productCategory" name="categoryId"></select></label><label>Marca<select id="productBrand" name="brandId"></select></label></div><button type="submit">Criar produto como rascunho</button></form></section>
+        <section class="card"><h2>Movimentar estoque</h2><form id="stockForm"><label>Variação<select id="inventoryVariant" name="variantId" required></select></label><label>Quantidade (+ entrada / − saída)<input name="delta" type="number" min="-100000" max="100000" step="1" placeholder="5" required></label><button type="submit">Gravar movimentação</button><p>O banco bloqueia estoque negativo e valores abaixo da quantidade reservada.</p></form></section>
+        <section class="card wide"><h2>Catálogo persistido no Neon</h2><div class="scroll"><table><thead><tr><th>Produto</th><th>Variação / preço</th><th>Status</th><th>Ação</th></tr></thead><tbody id="productsRows"></tbody></table></div></section>
+        <section class="card"><h2>Inventário do banco</h2><div class="scroll"><table><thead><tr><th>Produto</th><th>Físico</th><th>Reservado</th><th>Disponível</th></tr></thead><tbody id="inventoryRows"></tbody></table></div></section>
+        <section class="card"><h2>Simular pedido (sem pagamento)</h2><form id="orderForm"><label>Variação ativa<select id="orderVariant" name="variantId" required></select></label><label>Quantidade<input name="quantity" type="number" min="1" max="100" step="1" value="1" required></label><button type="submit">Criar rascunho e reservar estoque</button></form><p>Somente o preço registrado no banco é utilizado; os dados do navegador não podem alterar o total.</p></section>
+        <section class="card wide"><h2>Pedidos no Neon</h2><div class="scroll"><table><thead><tr><th>Número</th><th>Estado</th><th>Total</th><th>Ação</th></tr></thead><tbody id="ordersRows"></tbody></table></div></section>
+      </div>
+    </section>
+    <p id="notice" role="status" aria-live="polite">Iniciando autenticação Neon...</p>
+  </main>
+  <script defer src="/neon-gestao.js"></script>
+</body></html>
